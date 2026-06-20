@@ -1,0 +1,24 @@
+name: meme_collector_project
+description: "A new Flutter project."
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.0-103.1.beta
+
+dependencies:
+  flutter:
+    sdk: flutter
+  forui: ^0.23.0 # verified: flutter pub add forui
+  signals_flutter: ^7.1.0
+  path_provider: ^2.1.0
+  sqlite3: ^3.3.3
+  # sqlite3_flutter_libs: ^0.5.0   # add when you wire the DB
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
