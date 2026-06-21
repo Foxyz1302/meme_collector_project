@@ -1,0 +1,42 @@
+name: windows_app
+description: "Reaction Roulette — Windows desktop client."
+publish_to: none
+version: 0.2.0+1
+
+environment:
+  sdk: ^3.13.0-103.1.beta
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  forui: ^0.23.0
+  signals_flutter: ^7.1.0
+
+  # Platform
+  path_provider: ^2.1.0
+  super_clipboard: ^0.9.1
+  url_launcher: ^6.3.0
+
+  # ONNX Runtime — needed here (not in core) because it's a Flutter plugin.
+  # Core defines abstract inference interfaces; the app provides ONNX impls.
+  flutter_onnxruntime: ^1.8.0
+
+  # Backend (path dep, same workspace)
+  meme_collector_core:
+    path: ../../packages/meme_collector_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/models/
+    - assets/bin/

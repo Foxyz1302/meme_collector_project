@@ -1,1 +1,17 @@
 include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - "build/**"
+    - ".dart_tool/**"
+    - "assets/**"
+
+linter:
+  rules:
+    # Be strict about public API docs in core (it's a library)
+    public_member_api_docs: true
+    # Relax for app code which is UI-heavy
+    avoid_print: false  # scripts use print
+    # Prefer const constructors (already in flutter_lints but reinforce)
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true

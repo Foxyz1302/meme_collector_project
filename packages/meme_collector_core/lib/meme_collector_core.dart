@@ -1,0 +1,23 @@
+/// meme_collector_core — backend for Reaction Roulette.
+///
+/// Public API. Import this file, not the individual parts.
+///
+/// ```dart
+/// import 'package:meme_collector_core/meme_collector_core.dart';
+/// ```
+///
+/// Source files (in dependency order):
+///   - models.dart    — Reaction entity + JSON codec
+///   - storage.dart   — metadata.json I/O + atomic rename + paths
+///   - inference.dart — abstract TextEmbedder / ImageEmbedder / OcrEngine
+///   - search.dart    — in-memory SIMD vector index + RRF fusion (TODO)
+///   - ingest.dart    — URL parser + ffmpeg wrapper + pipeline (TODO)
+///   - worker.dart    — two isolates + SendPort message protocol (TODO)
+///
+/// Core is pure Dart (no Flutter deps). The app provides concrete ONNX
+/// implementations of the inference interfaces.
+library meme_collector_core;
+
+export 'models.dart';
+export 'storage.dart';
+export 'inference.dart';

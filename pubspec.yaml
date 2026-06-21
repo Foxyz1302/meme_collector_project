@@ -1,24 +1,16 @@
-name: meme_collector_project
-description: "A new Flutter project."
-publish_to: "none"
-version: 0.1.0+1
+name: meme_collector_workspace
+description: "Reaction Roulette — a local-first meme/reaction GIF search and clipboard tool."
+publish_to: none
+version: 0.2.0+1
 
 environment:
   sdk: ^3.13.0-103.1.beta
 
-dependencies:
-  flutter:
-    sdk: flutter
-  forui: ^0.23.0 # verified: flutter pub add forui
-  signals_flutter: ^7.1.0
-  path_provider: ^2.1.0
-  sqlite3: ^3.3.3
-  # sqlite3_flutter_libs: ^0.5.0   # add when you wire the DB
+# Pub workspace — packages share a single .dart_tool/package_config.json
+# and dependency versions. Path deps between members resolve at build time.
+workspace:
+  - packages/meme_collector_core
+  - apps/windows_app
 
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
   flutter_lints: ^6.0.0
-
-flutter:
-  uses-material-design: true
