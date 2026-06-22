@@ -203,21 +203,10 @@ Future<ModelReport> _validateOnnxModel({
     sw.stop();
     final loadMs = sw.elapsedMilliseconds.toDouble();
 
-    // Get input/output metadata from the session
-    final inputNames = <String>[];
-    final outputNames = <String>[];
-    try {
-      final inputs = await session.inputs;
-      for (final inp in inputs) {
-        inputNames.add(inp.name);
-      }
-    } catch (_) {}
-    try {
-      final outputs = await session.outputs;
-      for (final out in outputs) {
-        outputNames.add(out.name);
-      }
-    } catch (_) {}
+    // Get input/output metadata from the session.
+    // inputNames and outputNames are sync properties (not async getters).
+    final inputNames = session.inputNames;
+    final outputNames = session.outputNames;
 
     print('  [$name] inputs:  $inputNames');
     print('  [$name] outputs: $outputNames');
