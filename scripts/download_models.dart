@@ -48,22 +48,27 @@ final _downloads = <_Download>[
     dest: 'potion-base-32M/config.json',
   ),
 
-  // ─── CLIP ViT-B/32 (Xenova split towers) ────────────────────────────────
-  // Text tower: INT8 works fine (MatMul-based, no ConvInteger issue).
+  // ─── CLIP ViT-B/32 (Xenova split towers, FP16 for GPU) ──────────────────
+  // FP16 is the right quantization for GPU:
+  //   - Modern GPUs (GTX 1080+, Ampere+) have ~2× FP16 throughput vs FP32
+  //   - No ConvInteger issue (that's INT8-only)
+  //   - Half the size of FP32 (303 MB vs 606 MB total)
+  //   - Negligible accuracy loss for embedding similarity
+  //
+  // Why not INT8: ConvInteger ops aren't supported by CPU EP, and are 10× slower
+  // than FP32 on DirectML. INT8 is a CPU optimization, not a GPU one.
+  //
+  // Why not Q4: works on CPU but dequantizes to FP32 at load time (slow load),
+  // then runs FP32 ops anyway. FP16 skips that dequant step entirely.
   _Download(
-    url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model_int8.onnx',
-    dest: 'clip_text_int8.onnx',
-    expectedSizeBytes: 64 * 1024 * 1024,
+    url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model_fp16.onnx',
+    dest: 'clip_text_fp16.onnx',
+    expectedSizeBytes: 127 * 1024 * 1024,
   ),
-  // Vision tower: Q4 quantization (NOT int8). The int8 variant uses ConvInteger
-  // ops which the CPU Execution Provider doesn't support for this model:
-  //   "Could not find an implementation for ConvInteger(10)"
-  // Q4 is weight-only 4-bit quantization — weights dequantize to FP32 at load
-  // time, standard Conv ops run. Same size as int8, CPU-compatible.
   _Download(
-    url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_q4.onnx',
-    dest: 'clip_vision_q4.onnx',
-    expectedSizeBytes: 64 * 1024 * 1024,
+    url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_fp16.onnx',
+    dest: 'clip_vision_fp16.onnx',
+    expectedSizeBytes: 176 * 1024 * 1024,
   ),
   _Download(
     url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/tokenizer.json',

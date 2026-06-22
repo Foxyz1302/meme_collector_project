@@ -27,7 +27,14 @@ dependencies:
 
   # ONNX Runtime — needed here (not in core) because it's a Flutter plugin.
   # Core defines abstract inference interfaces; the app provides ONNX impls.
-  flutter_onnxruntime: ^1.8.0
+  #
+  # Why onnxruntime_v2 (not flutter_onnxruntime):
+  # - flutter_onnxruntime is CPU-only. No DirectML/CUDA EPs.
+  # - onnxruntime_v2 supports DirectML (Windows), CUDA (Linux, for future server),
+  #   CoreML (macOS), NNAPI (Android) — with appendDefaultProviders() auto-fallback.
+  # - API is more verbose (Java/C# style with manual .release()) but that's the
+  #   trade-off for GPU support.
+  onnxruntime_v2: ^1.23.2+2
 
   # Backend (path dep, same workspace)
   meme_collector_core:
