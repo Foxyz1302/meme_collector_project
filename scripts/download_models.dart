@@ -70,32 +70,22 @@ final _downloads = <_Download>[
     dest: 'ppocr_det.onnx',
     expectedSizeBytes: 84 * 1024 * 1024,
   ),
-  // PP-OCRv5 recognition model — file path may vary; try a few candidates.
+  // English recognition model — lives under languages/english/, not recognition/
   _Download(
-    url: '$_hfBase/monkt/paddleocr-onnx/resolve/main/recognition/v5/rec.onnx',
+    url: '$_hfBase/monkt/paddleocr-onnx/resolve/main/languages/english/rec.onnx',
     dest: 'ppocr_rec.onnx',
-    expectedSizeBytes: 10 * 1024 * 1024,
-    optional: true, // may 404 — try alternative below
+    expectedSizeBytes: 7 * 1024 * 1024,
   ),
-  // English character dictionary
+  // English character dictionary — lives next to rec.onnx
   _Download(
-    url: '$_hfBase/monkt/paddleocr-onnx/resolve/main/languages/en_dict.txt',
+    url: '$_hfBase/monkt/paddleocr-onnx/resolve/main/languages/english/dict.txt',
     dest: 'ppocr_dict.txt',
-    optional: true,
   ),
 ];
 
-// Alternative PP-OCR recognition model paths if the first attempt fails.
-// These mirror the jingsongliujing/OnnxOCR layout as a fallback.
-const _ppocrRecFallbacks = <String>[
-  '$_hfBase/monkt/paddleocr-onnx/resolve/main/recognition/v5/server/rec.onnx',
-  '$_hfBase/monkt/paddleocr-onnx/resolve/main/recognition/v3/rec.onnx',
-];
-
-const _ppocrDictFallbacks = <String>[
-  '$_hfBase/monkt/paddleocr-onnx/resolve/main/preprocessing/ppocr_keys_v1.txt',
-  '$_hfBase/monkt/paddleocr-onnx/resolve/main/languages/dict/en_dict.txt',
-];
+// No fallbacks needed — paths verified from the monkt README:
+// https://huggingface.co/monkt/paddleocr-onnx/blob/main/README.md
+// All v5 recognition models live under languages/{language}/rec.onnx + dict.txt
 
 class _Download {
   final String url;
@@ -156,43 +146,8 @@ Future<void> main() async {
     } on DioException catch (e) {
       stdout.write('\n');
       if (dl.optional) {
-        // Try fallbacks for OCR rec + dict
-        if (dl.dest == 'ppocr_rec.onnx') {
-          for (final fallback in _ppocrRecFallbacks) {
-            print('        Trying fallback: $fallback');
-            try {
-              await dio.download(fallback, destPath);
-              print('        OK (fallback)');
-              successCount++;
-              break;
-            } on DioException {
-              continue;
-            }
-          }
-          if (!await File(destPath).exists()) {
-            print('        FAILED — all fallbacks failed');
-            failCount++;
-          }
-        } else if (dl.dest == 'ppocr_dict.txt') {
-          for (final fallback in _ppocrDictFallbacks) {
-            print('        Trying fallback: $fallback');
-            try {
-              await dio.download(fallback, destPath);
-              print('        OK (fallback)');
-              successCount++;
-              break;
-            } on DioException {
-              continue;
-            }
-          }
-          if (!await File(destPath).exists()) {
-            print('        FAILED — all fallbacks failed');
-            failCount++;
-          }
-        } else {
-          print('        FAILED (optional): ${e.message}');
-          failCount++;
-        }
+        print('        FAILED (optional): ${e.message}');
+        failCount++;
       } else {
         print('        FAILED: ${e.message}');
         failCount++;
