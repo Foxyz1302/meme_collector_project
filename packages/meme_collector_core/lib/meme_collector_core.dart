@@ -11,7 +11,7 @@
 ///   - storage.dart   — metadata.json I/O + atomic rename + paths
 ///   - inference.dart — abstract TextEmbedder / ImageEmbedder / OcrEngine
 ///   - search.dart    — in-memory SIMD vector index + RRF fusion
-///   - ingest.dart    — URL parser + ffmpeg wrapper + pipeline (TODO)
+///   - ingest.dart    — URL parser + ffmpeg wrapper + pipeline state machine
 ///   - worker.dart    — two isolates + SendPort message protocol (TODO)
 ///
 /// Core is pure Dart (no Flutter deps). The app provides concrete ONNX
@@ -22,3 +22,4 @@ export 'models.dart';
 export 'storage.dart';
 export 'inference.dart';
 export 'search.dart';
+export 'ingest.dart';
