@@ -17,7 +17,12 @@ dependencies:
 
   # Platform
   path_provider: ^2.1.0
-  super_clipboard: ^0.9.1
+  # super_clipboard pulled temporarily — its super_native_extensions dep has a
+  # Windows PowerShell symlink resolution bug on non-C: drives that breaks the
+  # build. Re-add when the bug is fixed or when we build the right-click menu
+  # (the only feature that needs it). Plain `Clipboard` from flutter/services
+  # works fine for URL text copying in the meantime.
+  # super_clipboard: ^0.9.1
   url_launcher: ^6.3.0
 
   # ONNX Runtime — needed here (not in core) because it's a Flutter plugin.
@@ -38,6 +43,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  assets:
-    - assets/models/
-    - assets/bin/
+  # NOTE: assets are declared relative to THIS pubspec. The actual model files
+  # live at the workspace root in assets/models/ and assets/bin/. For the
+  # validation test we load them by absolute path via Directory.current, so
+  # no asset declaration is needed. When we ship, we'll either move the assets
+  # under this folder or use absolute paths at runtime.
