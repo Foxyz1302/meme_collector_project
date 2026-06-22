@@ -105,7 +105,7 @@ class _GifTile extends StatelessWidget {
               if (context.mounted) {
                 showFToast(
                   context: context,
-                  title: 'Link copied',
+                  title: const Text('Link copied'),
                 );
               }
             },
