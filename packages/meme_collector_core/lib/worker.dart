@@ -32,7 +32,7 @@ import 'search.dart';
 import 'storage.dart';
 
 /// Simple debug print that doesn't depend on Flutter.
-void __debugPrint(String msg) {
+void _debugPrint(String msg) {
   stdout.writeln('[Coordinator] $msg');
 }
 
