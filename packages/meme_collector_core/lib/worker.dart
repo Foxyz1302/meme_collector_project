@@ -18,6 +18,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show stdout;
 import 'dart:isolate';
 import 'dart:typed_data';
 
@@ -29,6 +30,11 @@ import 'ingest.dart';
 import 'models.dart';
 import 'search.dart';
 import 'storage.dart';
+
+/// Simple debug print that doesn't depend on Flutter.
+void __debugPrint(String msg) {
+  stdout.writeln('[Coordinator] $msg');
+}
 
 // ─── Message protocol (typed, sent between isolates) ────────────────────────
 
@@ -159,7 +165,10 @@ class Coordinator {
 
   // Isolates
   SearchIsolate? _searchIso;
-  IngestIsolate? _ingestIso;
+  // IngestIsolate removed — pipeline runs in main isolate (ONNX can't cross isolate boundaries)
+
+  // Ingest pipeline (runs in main isolate)
+  IngestPipeline? _ingestPipeline;
 
   // Save debouncing
   Timer? _saveDebounce;
@@ -191,32 +200,47 @@ class Coordinator {
   /// (the app passes in ONNX-based ones; the future server would pass
   /// different ones).
   Future<void> init(InferenceFactory inferenceFactory) async {
+    _debugPrint('Coordinator: init starting');
     _storage = Storage(config.storagePath);
     await _storage.ensureDirectoriesExist();
+    _debugPrint('Coordinator: storage ready at ${_storage.rootPath}');
 
     // Load metadata
     _metadata = await _storage.loadMetadata();
+    _debugPrint('Coordinator: metadata loaded (${_metadata.reactions.length} reactions)');
 
-    // Create embedders
+    // Create embedders for the MAIN isolate (query embedding)
+    _debugPrint('Coordinator: creating query embedder');
     _queryEmbedder = inferenceFactory.createQueryEmbedder();
     await _queryEmbedder.init();
+    _debugPrint('Coordinator: query embedder ready');
 
+    _debugPrint('Coordinator: creating CLIP text embedder');
     _clipTextEmbedder = inferenceFactory.createClipTextEmbedder();
     if (_clipTextEmbedder != null) {
       await _clipTextEmbedder.init();
+      _debugPrint('Coordinator: CLIP text embedder ready');
     }
 
-    _ingestTextEmbedder = inferenceFactory.createIngestTextEmbedder();
-    await _ingestTextEmbedder.init();
+    // NOTE: We do NOT create the ingest embedders in the main isolate.
+    // ONNX sessions contain native pointers that can't be passed across
+    // isolate boundaries. The ingest pipeline runs in the main isolate
+    // for now — it's I/O-bound (download + ffmpeg) so it won't block the
+    // UI much. The ONNX embedding steps are fast (~100ms each).
 
+    _ingestTextEmbedder = _queryEmbedder; // reuse the main isolate's text embedder
     _ingestImageEmbedder = inferenceFactory.createImageEmbedder();
+    // Don't init the image embedder yet — lazy load on first use
     _ocrEngine = inferenceFactory.createOcrEngine();
     _ffmpeg = await FfmpegWrapper.detect();
+    _debugPrint('Coordinator: ffmpeg detected: ${_ffmpeg != null}');
 
-    // Spawn search isolate
+    // Spawn search isolate (safe — it only uses pure-Dart VectorIndex, no ONNX)
+    _debugPrint('Coordinator: spawning search isolate');
     _searchIso = SearchIsolate();
     await _searchIso!.spawn();
     _searchIso!.responses.listen(_onSearchResponse);
+    _debugPrint('Coordinator: search isolate spawned');
 
     // Tell search isolate to load the vector index
     _searchIso!.send(VectorIndexRebuild(
@@ -224,21 +248,29 @@ class Coordinator {
       activeTextVersion: config.activeTextModelVersion,
       activeImageVersion: config.activeImageModelVersion,
     ));
+    _debugPrint('Coordinator: search isolate loading vectors');
 
-    // Spawn ingest isolate
-    _ingestIso = IngestIsolate();
-    await _ingestIso!.spawn(
-      storageRootPath: _storage.rootPath,
+    // NOTE: Ingest pipeline runs in the main isolate (no separate ingest
+    // isolate). ONNX sessions can't be passed across isolate boundaries,
+    // and creating duplicate sessions in a second isolate doubles memory.
+    // The ingest pipeline is mostly I/O-bound (download + ffmpeg), with
+    // short ONNX bursts (~100ms each) that won't visibly block the UI.
+
+    // Create the ingest pipeline (runs in main isolate)
+    _ingestPipeline = IngestPipeline(
+      storage: _storage,
       textEmbedder: _ingestTextEmbedder,
       imageEmbedder: _ingestImageEmbedder,
       ocrEngine: _ocrEngine,
       ffmpeg: _ffmpeg,
-      ingestConfig: config.ingestConfig,
+      dio: Dio(),
+      config: config.ingestConfig,
     );
-    _ingestIso!.events.listen(_onIngestEvent);
+    _debugPrint('Coordinator: ingest pipeline created');
 
     // Re-queue any incomplete reactions (crash recovery)
     _requeueIncomplete();
+    _debugPrint('Coordinator: init complete');
   }
 
   /// Re-queue reactions that were mid-ingest when the app last closed.
@@ -253,9 +285,55 @@ class Coordinator {
           errorMessage: null,
         );
         _updateReaction(reset);
-        _ingestIso?.send(IngestRequest(reset));
+        _runIngest(reset);
       }
     }
+  }
+
+  /// Run the ingest pipeline for a reaction (in the main isolate).
+  /// Forwards events to the stream controllers so the UI updates in real time.
+  void _runIngest(Reaction reaction) {
+    if (_ingestPipeline == null) return;
+
+    // Run the pipeline asynchronously — doesn't block the UI
+    () async {
+      await for (final event in _ingestPipeline!.process(reaction)) {
+        switch (event) {
+          case IngestProgressEvent(:final reactionId, :final status, :final progress):
+            final r = _metadata.byId(reactionId);
+            if (r != null) {
+              _updateReaction(r.copyWith(status: status, progress: progress));
+              _scheduleSave();
+            }
+            _progressController.add(IngestProgressMsg(
+              reactionId: reactionId,
+              status: status,
+              progress: progress,
+            ));
+          case IngestCompleteEvent(:final reaction):
+            _updateReaction(reaction);
+            _scheduleSave();
+            // Tell search isolate about new vectors
+            if (reaction.textEmbeddingPath != null) {
+              _loadAndSendVector(reaction.id, reaction.textEmbeddingPath!, isImage: false);
+            }
+            if (reaction.imageEmbeddingPath != null) {
+              _loadAndSendVector(reaction.id, reaction.imageEmbeddingPath!, isImage: true);
+            }
+            _completeController.add(IngestCompleteMsg(reaction));
+          case IngestFailedEvent(:final reactionId, :final error):
+            final r = _metadata.byId(reactionId);
+            if (r != null) {
+              _updateReaction(r.copyWith(
+                status: ReactionStatus.failed,
+                errorMessage: error,
+              ));
+              _scheduleSave();
+            }
+            _failedController.add(IngestFailedMsg(reactionId: reactionId, error: error));
+        }
+      }
+    }();
   }
 
   // ─── Public API (called by the UI) ────────────────────────────────────
@@ -355,7 +433,7 @@ class Coordinator {
     }
 
     // Queue for ingest (download + thumbnails + image embedding + OCR)
-    _ingestIso?.send(IngestRequest(reaction));
+    _runIngest(reaction);
 
     return reaction;
   }
@@ -434,7 +512,7 @@ class Coordinator {
 
     // If not yet downloaded, queue for ingest
     if (reaction.localFile == null) {
-      _ingestIso?.send(IngestRequest(updated));
+      _runIngest(updated);
     }
   }
 
@@ -469,8 +547,7 @@ class Coordinator {
     _saveDebounce?.cancel();
     await _doSave();
 
-    _ingestIso?.send(IngestShutdown());
-    await _ingestIso?.dispose();
+    // Search isolate can be disposed — it's pure Dart, no ONNX
     await _searchIso?.dispose();
 
     await _progressController.close();
