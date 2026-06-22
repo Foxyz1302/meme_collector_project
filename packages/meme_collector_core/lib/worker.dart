@@ -444,6 +444,17 @@ class Coordinator {
   /// Get all reactions (for UI grid display).
   List<Reaction> get allReactions => List.unmodifiable(_metadata.reactions);
 
+  /// The storage root path. Used by the UI to resolve relative file paths
+  /// (thumbnails, local files) to absolute paths for Image.file().
+  String get storagePath => _storage.rootPath;
+
+  /// Resolve a relative path (stored in Reaction) to an absolute path.
+  String resolvePath(String relative) {
+    // Normalize separators — relative paths use / on all platforms
+    final normalized = relative.replaceAll('/', p.separator);
+    return p.join(_storage.rootPath, normalized);
+  }
+
   /// Force-write any pending debounced save. Call on app exit.
   Future<void> flushNow() async {
     _saveDebounce?.cancel();

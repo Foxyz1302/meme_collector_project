@@ -40,6 +40,10 @@ dependencies:
   # Pure Dart, no platform deps. Handles PNG/JPEG/WebP/GIF (first frame).
   image: ^4.9.1
 
+  # Path manipulation (used by main.dart, inference_impl.dart, etc.)
+  # Already a transitive dep but we use it directly.
+  path: ^1.9.0
+
   # Backend (path dep, same workspace)
   meme_collector_core:
     path: ../../packages/meme_collector_core

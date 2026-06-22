@@ -51,9 +51,9 @@ void wireCoordinatorToSignals() {
   });
 
   // When ingest completes, refresh allReactions + clear progress for that id
-  c.completeStream.listen((_) {
+  c.completeStream.listen((event) {
     final progress = Map<String, double>.from(ingestProgress.value);
-    progress.remove(_.reaction.id);
+    progress.remove(event.reaction.id);
     ingestProgress.value = progress;
     allReactions.value = c.allReactions;
   });

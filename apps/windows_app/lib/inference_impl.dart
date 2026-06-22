@@ -19,7 +19,6 @@ import 'package:image/image.dart' as img;
 import 'package:meme_collector_core/meme_collector_core.dart';
 import 'package:model2vec/model2vec.dart';
 import 'package:onnxruntime_v2/onnxruntime_v2.dart';
-import 'package:path/path.dart' as p;
 
 // ─── CLIP BPE Tokenizer ─────────────────────────────────────────────────────
 
@@ -36,10 +35,9 @@ class ClipTokenizer {
   static const int contextLength = 77;
 
   final Map<String, int> _vocab;
-  final List<(String, String)> _merges; // (a, b) pairs in priority order
   final Map<(String, String), int> _mergeRanks;
 
-  ClipTokenizer._(this._vocab, this._merges, this._mergeRanks);
+  ClipTokenizer._(this._vocab, this._mergeRanks);
 
   /// Load tokenizer from a HuggingFace tokenizer.json file.
   factory ClipTokenizer.fromFile(String path) {
@@ -53,18 +51,15 @@ class ClipTokenizer {
     final vocab = vocabRaw.map((k, v) => MapEntry(k, v as int));
 
     final mergesRaw = model['merges'] as List<dynamic>;
-    final merges = <(String, String)>[];
     final mergeRanks = <(String, String), int>{};
     for (var i = 0; i < mergesRaw.length; i++) {
       final parts = (mergesRaw[i] as String).split(' ');
       if (parts.length == 2) {
-        final pair = (parts[0], parts[1]);
-        merges.add(pair);
-        mergeRanks[pair] = i;
+        mergeRanks[(parts[0], parts[1])] = i;
       }
     }
 
-    return ClipTokenizer._(vocab, merges, mergeRanks);
+    return ClipTokenizer._(vocab, mergeRanks);
   }
 
   /// Encode a string to CLIP token IDs (length = contextLength = 77).

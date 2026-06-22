@@ -2,26 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:signals_flutter/signals_flutter.dart';
+
 import 'gif_grid.dart';
 import 'app_searchbar.dart';
 import 'app_sidebar.dart';
-import '../services/library_service.dart';
-import '../state/signals.dart'; // added — searchQuery + selectedNav live here
+import '../state/signals.dart';
 
 class HomeScaffold extends StatefulWidget {
   const HomeScaffold({super.key});
+
   @override
   State<HomeScaffold> createState() => _HomeScaffoldState();
 }
 
 class _HomeScaffoldState extends State<HomeScaffold> {
   final _focus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    LibraryService.loadRecent();
-  }
 
   @override
   void dispose() {
@@ -48,13 +43,14 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         return KeyEventResult.ignored;
       },
       child: FScaffold(
-        sidebar: SignalBuilder(builder: (context) => AppSidebar(selected: selectedNav.value)),
+        sidebar: SignalBuilder(
+            builder: (context) => AppSidebar(selected: selectedNav.value)),
         child: const Padding(
           padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Column(
             spacing: 10,
             children: [
-              SearchBar(),
+              MySearchBar(),
               Expanded(child: GifGrid()),
             ],
           ),

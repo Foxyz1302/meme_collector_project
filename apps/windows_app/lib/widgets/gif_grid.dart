@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import 'package:path/path.dart' as p;
 
 import 'package:meme_collector_core/meme_collector_core.dart';
 
@@ -87,16 +86,10 @@ class _GifTile extends StatelessWidget {
     final colors = context.theme.colors;
     final c = coordinator!;
 
-    // Resolve thumbnail path (relative to storage root)
-    String? thumbnailAbsPath;
-    if (reaction.thumbnailStatic != null) {
-      // storage root is parent of the metadata.json
-      // We need to resolve relative paths against the storage root
-      // For now, use a hack: coordinator stores reactions with relative paths,
-      // we need the absolute path for Image.file
-      // TODO: expose storage root path via coordinator for path resolution
-      // For now, just show placeholder if we can't resolve
-    }
+    // Resolve thumbnail path (relative to storage root) to absolute path
+    final thumbnailAbsPath = reaction.thumbnailStatic != null
+        ? c.resolvePath(reaction.thumbnailStatic!)
+        : null;
 
     return SignalBuilder(
       builder: (context) {
@@ -110,7 +103,10 @@ class _GifTile extends StatelessWidget {
               await Clipboard.setData(ClipboardData(text: reaction.url));
               await c.incrementUsage(reaction.id);
               if (context.mounted) {
-                FToaster.show(context, message: 'Link copied');
+                showFToast(
+                  context: context,
+                  title: 'Link copied',
+                );
               }
             },
             onLongPress: () {
