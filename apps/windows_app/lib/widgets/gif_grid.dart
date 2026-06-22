@@ -16,11 +16,54 @@ class GifGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return SignalBuilder(
       builder: (context) {
-        // Empty query -> hotlist; otherwise search results.
         final query = searchQuery.value;
-        final items = query.isEmpty ? recentUsage.value : searchResults.value;
+        // When searching: show search results (List<SearchResult>)
+        // When not searching: show allReactions (List<Reaction>) so newly
+        // added reactions appear immediately without waiting for hotlist refresh
+        final searchItems = query.isEmpty ? <SearchResult>[] : searchResults.value;
+        final allItems = allReactions.value;
 
-        if (items.isEmpty && query.isNotEmpty) {
+        if (query.isEmpty) {
+          // Show all reactions, sorted by addedAt desc (newest first)
+          if (allItems.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 12,
+                children: [
+                  const Icon(FLucideIcons.imagePlus, size: 40),
+                  const Text('Your library is empty'),
+                  FButton(
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: () async {
+                      final clipData = await Clipboard.getData('text/plain');
+                      final url = clipData?.text?.trim();
+                      if (url != null && url.isNotEmpty) {
+                        await addReaction(url);
+                      }
+                    },
+                    child: const Text('Paste reaction URL'),
+                  ),
+                ],
+              ),
+            );
+          }
+          return GridView.builder(
+            padding: const EdgeInsets.all(8),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 180,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1.0,
+            ),
+            itemCount: allItems.length,
+            itemBuilder: (context, i) => _GifTile(reaction: allItems[i]),
+          );
+        }
+
+        // Search mode — show search results
+        final items = searchItems;
+        if (items.isEmpty) {
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -28,26 +71,6 @@ class GifGrid extends StatelessWidget {
               children: [
                 const Icon(FLucideIcons.searchX, size: 32),
                 Text(isSearching.value ? 'Searching…' : 'No matches'),
-              ],
-            ),
-          );
-        }
-
-        if (items.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 12,
-              children: [
-                const Icon(FLucideIcons.imagePlus, size: 40),
-                const Text('Your library is empty'),
-                FButton(
-                  mainAxisSize: MainAxisSize.min,
-                  onPress: () {
-                    // TODO: trigger import flow (paste URL dialog)
-                  },
-                  child: const Text('Add your first reaction'),
-                ),
               ],
             ),
           );
@@ -63,12 +86,9 @@ class GifGrid extends StatelessWidget {
           ),
           itemCount: items.length,
           itemBuilder: (context, i) {
-            // items is List<SearchResult> — look up the Reaction
             final result = items[i];
             final reaction = coordinator?.getReaction(result.reactionId);
-            if (reaction == null) {
-              return const SizedBox.shrink();
-            }
+            if (reaction == null) return const SizedBox.shrink();
             return _GifTile(reaction: reaction);
           },
         );
@@ -101,7 +121,7 @@ class _GifTile extends StatelessWidget {
             onTap: () async {
               // Copy URL to clipboard (the Discord-like behavior)
               await Clipboard.setData(ClipboardData(text: reaction.url));
-              await c.incrementUsage(reaction.id);
+              await incrementUsage(reaction.id);
               if (context.mounted) {
                 showFToast(
                   context: context,

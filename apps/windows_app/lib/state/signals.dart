@@ -101,3 +101,22 @@ Future<void> performSearch(String query) async {
     isSearching.value = false;
   }
 }
+
+/// Add a reaction from a URL. Refreshes signals so the grid updates immediately.
+Future<void> addReaction(String url, {String? title, List<String>? tags}) async {
+  final c = coordinator;
+  if (c == null) return;
+  await c.addReaction(url: url, title: title, tags: tags);
+  refreshReactions();
+  await refreshHotlist();
+}
+
+/// Increment usage for a reaction. Refreshes signals so the grid updates.
+Future<void> incrementUsage(String id) async {
+  final c = coordinator;
+  if (c == null) return;
+  await c.incrementUsage(id);
+  refreshReactions();
+  // Don't refresh hotlist on every click — it's async and goes through the
+  // search isolate. The grid will update on next search or app restart.
+}

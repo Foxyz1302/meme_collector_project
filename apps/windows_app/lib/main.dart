@@ -10,6 +10,7 @@ import 'package:signals_flutter/signals_flutter.dart';
 import 'package:meme_collector_core/meme_collector_core.dart';
 
 import 'inference_factory.dart';
+import 'inference_isolate.dart';
 import 'state/signals.dart';
 import 'widgets/home_scaffold.dart';
 
@@ -46,6 +47,14 @@ Future<void> _initCoordinator() async {
     final modelsDir = p.normalize(
         p.join(Directory.current.path, '..', '..', 'assets', 'models'));
 
+    // ─── Initialize inference isolate (runs ONNX off the main thread) ──────
+    final isolateManager = InferenceIsolateManager();
+    await isolateManager.spawn(InferenceIsolateConfig(
+      clipTextModelPath: p.join(modelsDir, 'clip_text_fp16.onnx'),
+      clipTokenizerPath: p.join(modelsDir, 'clip_tokenizer.json'),
+      clipVisionModelPath: p.join(modelsDir, 'clip_vision_fp16.onnx'),
+    ));
+
     // ─── Initialize Coordinator ────────────────────────────────────────────
     coordinator = Coordinator(
       config: CoordinatorConfig(
@@ -55,7 +64,10 @@ Future<void> _initCoordinator() async {
       ),
     );
 
-    await coordinator!.init(AppInferenceFactory(modelsDir: modelsDir));
+    await coordinator!.init(AppInferenceFactory(
+      modelsDir: modelsDir,
+      isolateManager: isolateManager,
+    ));
 
     // Wire coordinator streams to signals (for UI rebuilds)
     wireCoordinatorToSignals();
