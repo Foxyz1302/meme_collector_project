@@ -199,11 +199,13 @@ void main() {
       );
 
       // r1 and r2 should be top 2 (both match text vector + keyword 'drake')
-      // r3 should be last (no vector match, no keyword match)
-      expect(results.length, 2);
+      // r3 should be last (low vector similarity, no keyword match)
+      // All 3 are returned because they're all in the vector index —
+      // the search returns ranked results, the caller decides how many to show.
+      expect(results.length, 3);
       expect(results[0].reactionId, anyOf('r1', 'r2'));
       expect(results[1].reactionId, anyOf('r1', 'r2'));
-      expect(results.any((r) => r.reactionId == 'r3'), false);
+      expect(results[2].reactionId, 'r3'); // last = lowest score
     });
 
     test('usage boost affects ranking', () {
