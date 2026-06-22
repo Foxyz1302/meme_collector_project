@@ -60,6 +60,37 @@ void main() {
     await imageEmbedder.dispose();
   });
 
+  test('CLIP tokenizer debug: print token IDs for various inputs', () async {
+    // This test prints the actual token IDs so we can verify the BPE
+    // tokenizer is producing different tokens for different inputs.
+    // If all inputs produce the same tokens (e.g. just BOS+EOS+PAD),
+    // the tokenizer is broken.
+    final inputs = [
+      'a cat',
+      'a car',
+      'a dog',
+      'a puppy',
+      'sarcastic reaction gif',
+      'drake hotline bling',
+    ];
+
+    print('\n>>> Token ID debug:');
+    for (final input in inputs) {
+      final tokenIds = textEmbedder.tokenizer!.encode(input);
+      // Count non-pad tokens (anything that's not EOS/pad)
+      final nonPad = tokenIds.where((id) => id != ClipTokenizer.eosTokenId).toList();
+      print('  "$input" → ${nonPad.length} tokens: $nonPad');
+    }
+    print('');
+
+    // Sanity: "a cat" and "a car" should produce DIFFERENT token IDs
+    final catTokens = textEmbedder.tokenizer!.encode('a cat');
+    final carTokens = textEmbedder.tokenizer!.encode('a car');
+    expect(catTokens[1] != carTokens[1] || catTokens[2] != carTokens[2], true,
+        reason: 'Expected "a cat" and "a car" to produce different tokens. '
+            'cat=${catTokens.sublist(0, 5)}, car=${carTokens.sublist(0, 5)}');
+  });
+
   test('CLIP text embedding produces normalized 512-dim vector', () async {
     final vec = await textEmbedder.embed('a cat sitting on a table');
     expect(vec.length, 512, reason: 'embedding dimension');

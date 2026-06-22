@@ -77,9 +77,15 @@ class ClipTokenizer {
 
     final tokenIds = <int>[];
     for (final preToken in preTokens) {
-      final bytes = preToken.codeUnits;
+      // Encode to UTF-8 bytes (NOT codeUnits which gives UTF-16)
+      final bytes = utf8.encode(preToken);
       // Byte-level: convert each byte to its unicode char
-      final unicodeChars = bytes.map(_byteToUnicode).join('');
+      final chars = bytes.map(_byteToUnicode).toList();
+      // Append </w> to the last character (end-of-word marker)
+      if (chars.isNotEmpty) {
+        chars[chars.length - 1] = chars[chars.length - 1] + '</w>';
+      }
+      final unicodeChars = chars.join();
       final bpeTokens = _bpe(unicodeChars);
       for (final token in bpeTokens) {
         final id = _vocab[token];
@@ -227,6 +233,9 @@ class ClipTextEmbedder implements TextEmbedder {
   OrtSession? _session;
   ClipTokenizer? _tokenizer;
   bool _initialized = false;
+
+  /// Public access to the tokenizer for debug/test purposes.
+  ClipTokenizer? get tokenizer => _tokenizer;
 
   ClipTextEmbedder({
     required String modelPath,
