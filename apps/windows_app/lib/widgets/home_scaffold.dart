@@ -45,14 +45,17 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       child: FScaffold(
         sidebar: SignalBuilder(
             builder: (context) => AppSidebar(selected: selectedNav.value)),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Column(
-            spacing: 10,
-            children: [
-              MySearchBar(),
-              Expanded(child: GifGrid()),
-            ],
+        child: Material(
+          color: Colors.transparent,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Column(
+              spacing: 10,
+              children: [
+                MySearchBar(),
+                Expanded(child: GifGrid()),
+              ],
+            ),
           ),
         ),
       ),
