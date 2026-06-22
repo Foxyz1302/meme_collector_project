@@ -25,7 +25,6 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:onnxruntime_v2/onnxruntime_v2.dart';
@@ -36,24 +35,26 @@ void main() {
 
   // Models live at workspace_root/assets/models/. From apps/windows_app/,
   // that's ../../assets/models/.
-  final modelsDir =
-      p.normalize(p.join(Directory.current.path, '..', '..', 'assets', 'models'));
+  final modelsDir = p.normalize(
+      p.join(Directory.current.path, '..', '..', 'assets', 'models'));
   final report = <String, ModelReport>{};
 
   print('Models dir: $modelsDir');
 
-  setUpAll(() async {
+  setUpAll(() {
     // Initialize ORT environment once.
     OrtEnv.instance.init();
   });
 
   test('detect available execution providers', () async {
     final providers = OrtEnv.instance.availableProviders();
-    print('\n>>> Available ORT execution providers: $providers');
+    // OrtProvider is an enum — convert to strings for printing
+    final providerNames = providers.map((p) => p.toString()).toList();
+    print('\n>>> Available ORT execution providers: $providerNames');
     report['execution_providers'] = ModelReport(
       loaded: true,
       sanityPassed: true,
-      inputNames: providers,
+      inputNames: providerNames,
     );
     // Just print, don't assert — we want to know what's available even if GPU EPs aren't.
   });
@@ -64,7 +65,7 @@ void main() {
       modelPath: p.join(modelsDir, 'clip_text_fp16.onnx'),
       syntheticInputs: _syntheticClipTextInputs(),
       useGpu: false,
-      outputShape: [1, 512],
+      outputLen: 512,
     );
     report['clip_text_cpu'] = result;
     expect(result.loaded, true,
@@ -77,7 +78,7 @@ void main() {
       modelPath: p.join(modelsDir, 'clip_text_fp16.onnx'),
       syntheticInputs: _syntheticClipTextInputs(),
       useGpu: true,
-      outputShape: [1, 512],
+      outputLen: 512,
     );
     report['clip_text_gpu'] = result;
     // Don't fail if GPU unavailable — just record.
@@ -92,7 +93,7 @@ void main() {
       modelPath: p.join(modelsDir, 'clip_vision_fp16.onnx'),
       syntheticInputs: _syntheticClipVisionInputs(),
       useGpu: false,
-      outputShape: [1, 512],
+      outputLen: 512,
     );
     report['clip_vision_cpu'] = result;
     expect(result.loaded, true,
@@ -105,7 +106,7 @@ void main() {
       modelPath: p.join(modelsDir, 'clip_vision_fp16.onnx'),
       syntheticInputs: _syntheticClipVisionInputs(),
       useGpu: true,
-      outputShape: [1, 512],
+      outputLen: 512,
     );
     report['clip_vision_gpu'] = result;
     if (!result.loaded) {
@@ -119,7 +120,7 @@ void main() {
       modelPath: p.join(modelsDir, 'ppocr_det.onnx'),
       syntheticInputs: _syntheticPpocrDetInputs(),
       useGpu: false,
-      outputShape: null,
+      outputLen: null,
     );
     report['ppocr_det_cpu'] = result;
     expect(result.loaded, true,
@@ -132,7 +133,7 @@ void main() {
       modelPath: p.join(modelsDir, 'ppocr_rec.onnx'),
       syntheticInputs: _syntheticPpocrRecInputs(),
       useGpu: false,
-      outputShape: null,
+      outputLen: null,
     );
     report['ppocr_rec_cpu'] = result;
     expect(result.loaded, true,
@@ -167,7 +168,7 @@ void main() {
       print('  loaded:        ${r.loaded}');
       print('  load_ms:       ${r.loadMs?.toStringAsFixed(1) ?? 'N/A'}');
       print('  infer_ms:      ${r.inferMs?.toStringAsFixed(1) ?? 'N/A'}');
-      print('  output_shape:  ${r.outputShape ?? 'N/A'}');
+      print('  output_len:    ${r.outputShape?.firstOrNull ?? 'N/A'}');
       print('  sanity_passed: ${r.sanityPassed}');
       if (r.error != null) print('  error:         ${r.error}');
       if (r.inputNames != null) print('  input_names:   ${r.inputNames}');
@@ -184,12 +185,18 @@ void main() {
     print('GPU vs CPU SUMMARY');
     print('${'-' * 60}');
     if (cpuText != null && gpuText != null && gpuText.loaded) {
-      print('CLIP text:  CPU ${cpuText.inferMs?.toStringAsFixed(1)}ms  |  GPU ${gpuText.inferMs?.toStringAsFixed(1)}ms  |  speedup ${((cpuText.inferMs ?? 1) / (gpuText.inferMs ?? 1)).toStringAsFixed(2)}×');
+      final speedup = (cpuText.inferMs ?? 1) / (gpuText.inferMs ?? 1);
+      print('CLIP text:  CPU ${cpuText.inferMs?.toStringAsFixed(1)}ms  |  '
+          'GPU ${gpuText.inferMs?.toStringAsFixed(1)}ms  |  '
+          'speedup ${speedup.toStringAsFixed(2)}×');
     } else if (gpuText != null && !gpuText.loaded) {
       print('CLIP text:  GPU unavailable (${gpuText.error})');
     }
     if (cpuVision != null && gpuVision != null && gpuVision.loaded) {
-      print('CLIP vision: CPU ${cpuVision.inferMs?.toStringAsFixed(1)}ms  |  GPU ${gpuVision.inferMs?.toStringAsFixed(1)}ms  |  speedup ${((cpuVision.inferMs ?? 1) / (gpuVision.inferMs ?? 1)).toStringAsFixed(2)}×');
+      final speedup = (cpuVision.inferMs ?? 1) / (gpuVision.inferMs ?? 1);
+      print('CLIP vision: CPU ${cpuVision.inferMs?.toStringAsFixed(1)}ms  |  '
+          'GPU ${gpuVision.inferMs?.toStringAsFixed(1)}ms  |  '
+          'speedup ${speedup.toStringAsFixed(2)}×');
     } else if (gpuVision != null && !gpuVision.loaded) {
       print('CLIP vision: GPU unavailable (${gpuVision.error})');
     }
@@ -202,7 +209,7 @@ class ModelReport {
   final bool loaded;
   final double? loadMs;
   final double? inferMs;
-  final List<int>? outputShape;
+  final List<int>? outputShape; // we store output length here (single int in list)
   final List<String>? inputNames;
   final List<String>? outputNames;
   final bool sanityPassed;
@@ -250,7 +257,7 @@ Future<ModelReport> _validateOnnxModel({
   required String modelPath,
   required List<_SyntheticInput> syntheticInputs,
   required bool useGpu,
-  List<int>? outputShape,
+  int? outputLen, // expected length of the output (flattened)
 }) async {
   final sw = Stopwatch()..start();
   try {
@@ -271,28 +278,17 @@ Future<ModelReport> _validateOnnxModel({
     if (useGpu) {
       // Try GPU providers first, fall back to CPU
       sessionOptions.appendDefaultProviders();
-    } else {
-      // CPU only — append CPUProvider explicitly, skip GPU
-      // Note: appendCPUProvider may not exist in all versions; if not, just
-      // don't append any providers and ORT defaults to CPU.
-      try {
-        // Try the method from the README; if it doesn't exist, fall through
-        // to the catch which just uses default (CPU-only) session options.
-        // ignore: avoid_dynamic_calls
-        (sessionOptions as dynamic).appendCPUProvider();
-      } catch (_) {
-        // No appendCPUProvider method — default session options are CPU-only
-      }
     }
+    // For CPU-only: don't append any providers, ORT defaults to CPU.
 
     final session = OrtSession.fromBuffer(modelBytes, sessionOptions);
 
     sw.stop();
     final loadMs = sw.elapsedMilliseconds.toDouble();
 
-    // Get input/output names
-    final inputNames = session.inputNames?.cast<String>() ?? [];
-    final outputNames = session.outputNames?.cast<String>() ?? [];
+    // Get input/output names (sync properties on OrtSession)
+    final inputNames = session.inputNames;
+    final outputNames = session.outputNames;
 
     print('  [$name] inputs:  $inputNames');
     print('  [$name] outputs: $outputNames');
@@ -303,13 +299,15 @@ Future<ModelReport> _validateOnnxModel({
     final inputsMap = <String, OrtValue>{};
     final inputsToRelease = <OrtValue>[];
     for (final synth in syntheticInputs) {
-      // OrtValueTensor.createTensorWithDataList(data, shape)
-      final tensor = OrtValueTensor.createTensorWithDataList(synth.data, synth.shape);
+      // OrtValueTensor.createTensorWithDataList(data, [shape])
+      final tensor =
+          OrtValueTensor.createTensorWithDataList(synth.data, synth.shape);
       inputsMap[synth.name] = tensor;
       inputsToRelease.add(tensor);
     }
 
     final runOptions = OrtRunOptions();
+    // runAsync returns Future<List<OrtValue?>?> — positional list, not a Map
     final outputs = await session.runAsync(runOptions, inputsMap);
 
     sw.stop();
@@ -321,62 +319,55 @@ Future<ModelReport> _validateOnnxModel({
     }
     runOptions.release();
 
-    // Get output shape + values
-    List<int>? actualShape;
+    // Read output values
+    int? actualOutputLen;
     if (outputs != null && outputs.isNotEmpty) {
-      final firstOutput = outputs.values.first;
-      try {
-        // OrtValueTensor has shape + data
-        // ignore: avoid_dynamic_calls
-        final dynamic outDyn = firstOutput;
-        if (outDyn is OrtValueTensor) {
-          // shape may be a property
-          // ignore: avoid_dynamic_calls
-          final shape = outDyn.shape;
-          if (shape is List) {
-            actualShape = shape.cast<int>();
+      final firstOutput = outputs.first;
+      if (firstOutput != null) {
+        try {
+          // OrtValueTensor.value returns dynamic — typically a flattened List
+          final value = firstOutput.value;
+          if (value is List) {
+            actualOutputLen = value.length;
+            print('  [$name] output len: ${value.length}');
+            if (value.isNotEmpty) {
+              final preview = value.take(5).toList();
+              print('  [$name] output[0..5]: $preview');
+            }
+          } else {
+            print('  [$name] output type: ${value.runtimeType}');
           }
+        } catch (e) {
+          print('  [$name] could not read output: $e');
         }
-        // Try to read values
-        // ignore: avoid_dynamic_calls
-        final data = outDyn.value;
-        if (data is List) {
-          print('  [$name] output len: ${data.length}');
-          if (data.isNotEmpty) {
-            print('  [$name] output[0..5]: ${data.take(5).toList()}');
-          }
-        }
-      } catch (e) {
-        print('  [$name] could not read output: $e');
+        // Release output tensor
+        firstOutput.release();
       }
-      // Release output tensors
-      for (final out in outputs.values) {
-        // ignore: avoid_dynamic_calls
-        (out as dynamic).release();
+      // Release any remaining outputs
+      for (var i = 1; i < outputs.length; i++) {
+        outputs[i]?.release();
       }
     }
 
-    await session.release();
+    session.release();
 
-    // Verify output shape if expected
+    // Verify output length if expected
     var shapeOk = true;
-    if (outputShape != null && actualShape != null) {
-      if (actualShape.length >= 2 && outputShape.length >= 2) {
-        shapeOk = actualShape.last == outputShape.last;
-      } else {
-        shapeOk = _shapesMatch(actualShape, outputShape);
-      }
+    if (outputLen != null && actualOutputLen != null) {
+      shapeOk = actualOutputLen == outputLen;
     }
 
     return ModelReport(
       loaded: true,
       loadMs: loadMs,
       inferMs: inferMs,
-      outputShape: actualShape,
+      outputShape: actualOutputLen != null ? [actualOutputLen] : null,
       inputNames: inputNames,
       outputNames: outputNames,
       sanityPassed: shapeOk,
-      error: shapeOk ? null : 'Output shape $actualShape != expected $outputShape',
+      error: shapeOk
+          ? null
+          : 'Output len $actualOutputLen != expected $outputLen',
     );
   } catch (e, st) {
     sw.stop();
@@ -503,14 +494,4 @@ ModelReport _validateModel2VecFiles(String modelDir) {
       error: e.toString(),
     );
   }
-}
-
-// ─── Shape helpers ──────────────────────────────────────────────────────────
-
-bool _shapesMatch(List<int> actual, List<int> expected) {
-  if (actual.length != expected.length) return false;
-  for (var i = 0; i < actual.length; i++) {
-    if (actual[i] != expected[i]) return false;
-  }
-  return true;
 }
