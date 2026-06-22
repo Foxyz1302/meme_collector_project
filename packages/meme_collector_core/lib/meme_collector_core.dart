@@ -10,7 +10,7 @@
 ///   - models.dart    — Reaction entity + JSON codec
 ///   - storage.dart   — metadata.json I/O + atomic rename + paths
 ///   - inference.dart — abstract TextEmbedder / ImageEmbedder / OcrEngine
-///   - search.dart    — in-memory SIMD vector index + RRF fusion (TODO)
+///   - search.dart    — in-memory SIMD vector index + RRF fusion
 ///   - ingest.dart    — URL parser + ffmpeg wrapper + pipeline (TODO)
 ///   - worker.dart    — two isolates + SendPort message protocol (TODO)
 ///
@@ -21,3 +21,4 @@ library meme_collector_core;
 export 'models.dart';
 export 'storage.dart';
 export 'inference.dart';
+export 'search.dart';
