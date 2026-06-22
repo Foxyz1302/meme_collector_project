@@ -670,7 +670,8 @@ class SearchIsolate {
     // Convert to broadcast stream so both the handshake + the public
     // responses stream can listen without "already listened to" errors.
     final broadcast = _receivePort!.asBroadcastStream();
-    _responseStream = broadcast.whereType<WorkerMessage>();
+    _responseStream =
+        broadcast.where((msg) => msg is WorkerMessage).cast<WorkerMessage>();
 
     _isolate = await Isolate.spawn(_searchIsolateEntry, _receivePort!.sendPort);
 
@@ -803,7 +804,8 @@ class IngestIsolate {
     // Convert to broadcast stream so both the handshake + the public
     // events stream can listen without "already listened to" errors.
     final broadcast = _receivePort!.asBroadcastStream();
-    _eventStream = broadcast.whereType<WorkerMessage>();
+    _eventStream =
+        broadcast.where((msg) => msg is WorkerMessage).cast<WorkerMessage>();
 
     final init = _IngestIsolateInit(
       mainPort: _receivePort!.sendPort,
