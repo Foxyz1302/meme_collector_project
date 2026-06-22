@@ -62,47 +62,53 @@ class VectorIndex {
     _textVectors.clear();
     _imageVectors.clear();
 
-    // Load text vectors
-    final textDirName = 'model2vec__$activeTextVersion';
-    final textDir = Directory('${storage.embeddingsTextDir}/$textDirName');
-    if (await textDir.exists()) {
-      await for (final entry in textDir.list()) {
-        if (entry is! File) continue;
-        if (!entry.path.endsWith('.f32.bin')) continue;
+    // Load text vectors — producer must match what the ingest pipeline writes.
+    // Currently using CLIP text tower (model2vec was removed).
+    // Try multiple producer names for backward compat.
+    for (final textProducer in ['clip-vit-b32-fp16', 'model2vec']) {
+      final textDirName = '${textProducer}__$activeTextVersion';
+      final textDir = Directory('${storage.embeddingsTextDir}/$textDirName');
+      if (await textDir.exists()) {
+        await for (final entry in textDir.list()) {
+          if (entry is! File) continue;
+          if (!entry.path.endsWith('.f32.bin')) continue;
 
-        final id = entry.uri.pathSegments.last.replaceAll('.f32.bin', '');
-        final vector = readVectorFile(entry.path);
-        final index = _ids.length;
-        _ids.add(id);
-        _textVectors.add(vector);
-        _imageVectors.add(null);
-        _idToIndex[id] = index;
+          final id = entry.uri.pathSegments.last.replaceAll('.f32.bin', '');
+          final vector = readVectorFile(entry.path);
+          final index = _ids.length;
+          _ids.add(id);
+          _textVectors.add(vector);
+          _imageVectors.add(null);
+          _idToIndex[id] = index;
+        }
+        break; // found text vectors, stop searching
       }
     }
 
-    // Load image vectors
-    final imageDirName = 'clip-vit-b32-int8__$activeImageVersion';
-    final imageDir = Directory('${storage.embeddingsImageDir}/$imageDirName');
-    if (await imageDir.exists()) {
-      await for (final entry in imageDir.list()) {
-        if (entry is! File) continue;
-        if (!entry.path.endsWith('.f32.bin')) continue;
+    // Load image vectors — try multiple producer names for backward compat.
+    for (final imageProducer in ['clip-vit-b32-fp16', 'clip-vit-b32-int8']) {
+      final imageDirName = '${imageProducer}__$activeImageVersion';
+      final imageDir = Directory('${storage.embeddingsImageDir}/$imageDirName');
+      if (await imageDir.exists()) {
+        await for (final entry in imageDir.list()) {
+          if (entry is! File) continue;
+          if (!entry.path.endsWith('.f32.bin')) continue;
 
-        final id = entry.uri.pathSegments.last.replaceAll('.f32.bin', '');
-        final vector = readVectorFile(entry.path);
+          final id = entry.uri.pathSegments.last.replaceAll('.f32.bin', '');
+          final vector = readVectorFile(entry.path);
 
-        // Add to existing entry or create new
-        final index = _idToIndex[id];
-        if (index != null) {
-          _imageVectors[index] = vector;
-        } else {
-          // Image vector without a text vector — still indexable
-          final newIndex = _ids.length;
-          _ids.add(id);
-          _textVectors.add(null);
-          _imageVectors.add(vector);
-          _idToIndex[id] = newIndex;
+          final index = _idToIndex[id];
+          if (index != null) {
+            _imageVectors[index] = vector;
+          } else {
+            final newIndex = _ids.length;
+            _ids.add(id);
+            _textVectors.add(null);
+            _imageVectors.add(vector);
+            _idToIndex[id] = newIndex;
+          }
         }
+        break; // found image vectors, stop searching
       }
     }
 

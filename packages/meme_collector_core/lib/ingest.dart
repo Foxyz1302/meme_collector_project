@@ -602,7 +602,7 @@ class IngestPipeline {
       if (embeddableText.isNotEmpty) {
         final textVec = await textEmbedder.embed(embeddableText);
         final vecPath =
-            storage.textEmbeddingPath(reaction.id, 'model2vec', config.textModelVersion);
+            storage.textEmbeddingPath(reaction.id, 'clip-vit-b32-fp16', config.textModelVersion);
         await writeVectorFile(vecPath, textVec);
         reaction = reaction.copyWith(
           textEmbeddingPath: p.relative(vecPath, from: storage.rootPath),
@@ -664,7 +664,7 @@ class IngestPipeline {
             if (enrichedText.isNotEmpty) {
               final textVec = await textEmbedder.embed(enrichedText);
               final vecPath = storage.textEmbeddingPath(
-                  reaction.id, 'model2vec', config.textModelVersion);
+                  reaction.id, 'clip-vit-b32-fp16', config.textModelVersion);
               await writeVectorFile(vecPath, textVec);
             }
           }

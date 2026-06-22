@@ -413,7 +413,7 @@ class Coordinator {
       try {
         final textVec = await _queryEmbedder.embed(reaction.embeddableText);
         final vecPath = _storage.textEmbeddingPath(
-            reaction.id, 'model2vec', config.activeTextModelVersion);
+            reaction.id, 'clip-vit-b32-fp16', config.activeTextModelVersion);
         await writeVectorFile(vecPath, textVec);
 
         // Update reaction with embedding path
@@ -490,7 +490,7 @@ class Coordinator {
       try {
         final textVec = await _queryEmbedder.embed(updated.embeddableText);
         final vecPath = _storage.textEmbeddingPath(
-            id, 'model2vec', config.activeTextModelVersion);
+            id, 'clip-vit-b32-fp16', config.activeTextModelVersion);
         await writeVectorFile(vecPath, textVec);
         _searchIso?.send(VectorIndexAddText(id, textVec));
       } catch (_) {
@@ -686,7 +686,7 @@ class CoordinatorConfig {
     required this.storagePath,
     this.animatedPreviewsEnabled = false,
     this.ocrEnabled = false,
-    this.activeTextModelVersion = 'potion-base-32M',
+    this.activeTextModelVersion = 'clip-vit-b32-fp16-v1',
     this.activeImageModelVersion = 'clip-vit-b32-fp16-v1',
     this.activeOcrModelVersion = 'pp-ocr-v5',
   });
