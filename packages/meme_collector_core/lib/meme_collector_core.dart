@@ -12,10 +12,10 @@
 ///   - inference.dart — abstract TextEmbedder / ImageEmbedder / OcrEngine
 ///   - search.dart    — in-memory SIMD vector index + RRF fusion
 ///   - ingest.dart    — URL parser + ffmpeg wrapper + pipeline state machine
-///   - worker.dart    — two isolates + SendPort message protocol (TODO)
+///   - worker.dart    — two isolates + SendPort message protocol + Coordinator
 ///
 /// Core is pure Dart (no Flutter deps). The app provides concrete ONNX
-/// implementations of the inference interfaces.
+/// implementations of the inference interfaces via InferenceFactory.
 library meme_collector_core;
 
 export 'models.dart';
@@ -23,3 +23,4 @@ export 'storage.dart';
 export 'inference.dart';
 export 'search.dart';
 export 'ingest.dart';
+export 'worker.dart';
