@@ -1,5 +1,5 @@
 name: meme_collector_core
-description: "Backend core for Reaction Roulette. Pure Dart — no Flutter deps. Storage, search, ingest, model2vec text embeddings, and abstract inference interfaces."
+description: "Backend core for Reaction Roulette. Pure Dart — no Flutter deps. Storage, search, ingest, and abstract inference interfaces."
 publish_to: none
 version: 0.1.0
 resolution: workspace
@@ -11,9 +11,6 @@ dependencies:
   # Storage / paths (all pure Dart)
   path: ^1.9.0
   ffi: ^2.1.0
-
-  # Text embeddings — pure Dart via Native Assets + Rust FFI
-  model2vec: ^1.2.0
 
   # Networking — pure Dart
   dio: ^5.4.0
