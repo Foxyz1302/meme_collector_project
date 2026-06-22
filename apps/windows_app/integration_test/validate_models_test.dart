@@ -55,10 +55,10 @@ void main() {
         reason: result.error ?? 'CLIP text failed to load');
   });
 
-  test('validate CLIP vision tower (vision_model_int8.onnx)', () async {
+  test('validate CLIP vision tower (vision_model_q4.onnx)', () async {
     final result = await _validateOnnxModel(
       name: 'clip_vision',
-      modelPath: p.join(modelsDir, 'clip_vision_int8.onnx'),
+      modelPath: p.join(modelsDir, 'clip_vision_q4.onnx'),
       syntheticInputs: _syntheticClipVisionInputs(),
       outputShape: [1, 512],
     );
@@ -287,12 +287,12 @@ Future<ModelReport> _validateOnnxModel({
 
 // ─── Synthetic input generators ─────────────────────────────────────────────
 
-/// CLIP text tower expects two inputs (typical CLIP ONNX layout):
-///   - input_ids:    int32[1, 77]
-///   - attention_mask: int32[1, 77]
+/// CLIP text tower expects only one input:
+///   - input_ids: int32[1, 77]
 ///
-/// We use the actual input names discovered at runtime. The validation
-/// passes both possible names and lets the runtime error if mismatched.
+/// Note: it does NOT accept attention_mask (the text tower uses causal
+/// attention internally — no mask needed). Passing attention_mask causes:
+///   PlatformException(INFERENCE_ERROR, Invalid input name: attention_mask)
 List<_SyntheticInput> _syntheticClipTextInputs() {
   final seqLen = 77;
   final inputIds = List<int>.filled(seqLen, 0);
@@ -300,12 +300,9 @@ List<_SyntheticInput> _syntheticClipTextInputs() {
   inputIds[1] = 320; // "a"
   inputIds[2] = 2368; // "cat"
   inputIds[seqLen - 1] = 49407; // EOS
-  final attentionMask = List<int>.filled(seqLen, 1);
 
   return [
     _SyntheticInput(name: 'input_ids', shape: [1, seqLen], data: inputIds),
-    _SyntheticInput(
-        name: 'attention_mask', shape: [1, seqLen], data: attentionMask),
   ];
 }
 

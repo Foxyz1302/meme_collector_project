@@ -48,16 +48,22 @@ final _downloads = <_Download>[
     dest: 'potion-base-32M/config.json',
   ),
 
-  // ─── CLIP ViT-B/32 INT8 (Xenova split towers) ──────────────────────────
+  // ─── CLIP ViT-B/32 (Xenova split towers) ────────────────────────────────
+  // Text tower: INT8 works fine (MatMul-based, no ConvInteger issue).
   _Download(
     url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model_int8.onnx',
     dest: 'clip_text_int8.onnx',
     expectedSizeBytes: 64 * 1024 * 1024,
   ),
+  // Vision tower: Q4 quantization (NOT int8). The int8 variant uses ConvInteger
+  // ops which the CPU Execution Provider doesn't support for this model:
+  //   "Could not find an implementation for ConvInteger(10)"
+  // Q4 is weight-only 4-bit quantization — weights dequantize to FP32 at load
+  // time, standard Conv ops run. Same size as int8, CPU-compatible.
   _Download(
-    url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_int8.onnx',
-    dest: 'clip_vision_int8.onnx',
-    expectedSizeBytes: 89 * 1024 * 1024,
+    url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_q4.onnx',
+    dest: 'clip_vision_q4.onnx',
+    expectedSizeBytes: 64 * 1024 * 1024,
   ),
   _Download(
     url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/tokenizer.json',

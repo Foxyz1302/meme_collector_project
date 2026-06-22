@@ -60,10 +60,13 @@ dart run scripts/download_models.dart
 Downloads to `assets/models/`:
 - `potion-base-32M/` — model2vec text embeddings (~150 MB)
 - `clip_text_int8.onnx` — CLIP text tower, INT8 (64 MB)
-- `clip_vision_int8.onnx` — CLIP vision tower, INT8 (89 MB)
+- `clip_vision_q4.onnx` — CLIP vision tower, Q4 weight-only quant (64 MB)
+  - **NOT int8** — the int8 variant uses `ConvInteger` ops that the CPU EP
+    doesn't support. Q4 is weight-only 4-bit quant, dequantizes to FP32
+    at load time, uses standard Conv ops.
 - `clip_tokenizer.json` — CLIP BPE tokenizer spec
 - `ppocr_det.onnx` — PP-OCRv5 detection (84 MB)
-- `ppocr_rec.onnx` — PP-OCRv5 recognition (~10 MB)
+- `ppocr_rec.onnx` — PP-OCRv5 recognition (~8 MB)
 - `ppocr_dict.txt` — character dictionary
 
 ### 4. Validate models (GATE — do this before anything else)
