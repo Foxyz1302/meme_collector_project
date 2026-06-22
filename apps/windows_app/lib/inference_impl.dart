@@ -71,22 +71,35 @@ class ClipTokenizer {
   ///
   /// Pattern: [BOS] tokens... [EOS] [PAD]... [PAD]
   /// Where PAD = EOS (49407) in CLIP.
+  ///
+  /// Algorithm (matching open_clip's SimpleTokenizer):
+  ///   1. Lowercase + clean whitespace
+  ///   2. Pre-tokenize via regex (words, numbers, punctuation, contractions)
+  ///   3. For each pre-token:
+  ///      a. UTF-8 encode → bytes
+  ///      b. Map each byte to its unicode char via byte_to_unicode
+  ///      c. Append '</w>' to the LAST char only: ("c", "a", "t</w>")
+  ///      d. Apply BPE merges to combine into larger tokens
+  ///      e. Look up each resulting token in vocab → token ID
   List<int> encode(String text) {
-    final lowercased = text.toLowerCase();
-    final preTokens = _preTokenize(lowercased);
+    // Clean: lowercase + collapse whitespace (matching open_clip's 'lower' clean fn)
+    final cleaned = text.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    final preTokens = _preTokenize(cleaned);
 
     final tokenIds = <int>[];
     for (final preToken in preTokens) {
-      // Encode to UTF-8 bytes (NOT codeUnits which gives UTF-16)
+      // UTF-8 encode the pre-token
       final bytes = utf8.encode(preToken);
-      // Byte-level: convert each byte to its unicode char
+      // Map each byte to its unicode char
       final chars = bytes.map(_byteToUnicode).toList();
-      // Append </w> to the last character (end-of-word marker)
-      if (chars.isNotEmpty) {
-        chars[chars.length - 1] = chars[chars.length - 1] + '</w>';
-      }
-      final unicodeChars = chars.join();
-      final bpeTokens = _bpe(unicodeChars);
+      if (chars.isEmpty) continue;
+
+      // Append '</w>' to the LAST character only
+      // This matches open_clip: word = tuple(token[:-1]) + (token[-1] + '</w>',)
+      chars[chars.length - 1] = chars[chars.length - 1] + '</w>';
+
+      // Apply BPE merges
+      final bpeTokens = _bpe(chars);
       for (final token in bpeTokens) {
         final id = _vocab[token];
         if (id != null) {
@@ -159,23 +172,37 @@ class ClipTokenizer {
 
   String _byteToUnicode(int byte) => _byteToUnicodeMap[byte] ?? '?';
 
-  /// Apply BPE merges to a string of unicode chars.
-  List<String> _bpe(String token) {
-    if (token.isEmpty) return [];
+  /// Apply BPE merges to a list of characters (last one has '</w>' suffix).
+  ///
+  /// Matches open_clip's bpe() function:
+  ///   - Find the pair with the lowest merge rank
+  ///   - Merge all occurrences of that pair in the word
+  ///   - Repeat until no more merges apply
+  ///
+  /// Input: ["c", "a", "t</w>"]  (for the word "cat")
+  /// Output: ["cat</w>"]  (after applying merges c+a→ca, ca+t</w>→cat</w>)
+  List<String> _bpe(List<String> chars) {
+    if (chars.isEmpty) return [];
+    if (chars.length == 1) return chars;
 
-    var word = token.split('');
+    var word = List<String>.from(chars);
     var pairs = _getPairs(word);
+
+    if (pairs.isEmpty) return word;
 
     while (true) {
       final minPair = _findMinPair(pairs);
       if (minPair == null) break;
 
+      final first = minPair.$1;
+      final second = minPair.$2;
       final newWord = <String>[];
       var i = 0;
       while (i < word.length) {
+        // Find next occurrence of `first` starting at i
         var j = -1;
-        for (var k = i; k < word.length - 1; k++) {
-          if (word[k] == minPair.$1 && word[k + 1] == minPair.$2) {
+        for (var k = i; k < word.length; k++) {
+          if (word[k] == first) {
             j = k;
             break;
           }
@@ -185,8 +212,14 @@ class ClipTokenizer {
           break;
         }
         newWord.addAll(word.sublist(i, j));
-        newWord.add(minPair.$1 + minPair.$2);
-        i = j + 2;
+        // Check if the pair (first, second) is at position j
+        if (j < word.length - 1 && word[j + 1] == second) {
+          newWord.add(first + second);
+          i = j + 2;
+        } else {
+          newWord.add(word[j]);
+          i = j + 1;
+        }
       }
       word = newWord;
       if (word.length == 1) break;
