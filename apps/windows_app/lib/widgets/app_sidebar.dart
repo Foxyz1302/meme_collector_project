@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
+import 'package:meme_collector_core/worker.dart';
 import '../state/signals.dart';
 
 class AppSidebar extends StatelessWidget {
@@ -88,7 +90,12 @@ class AppSidebar extends StatelessWidget {
             FSidebarItem(
               icon: const Icon(FLucideIcons.clipboardPaste),
               label: const Text('Paste link'),
-              onPress: () {
+              onPress: () async {
+                final result = (await Clipboard.getData('text/plain'))?.text;
+                if (result == null) {
+                  return;
+                }
+                coordinator?.addReaction(url: (result).trim());
                 // TODO: clipboard -> parse tenor/giphy -> download
               },
             ),
