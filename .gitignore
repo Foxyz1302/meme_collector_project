@@ -60,3 +60,11 @@ scripts/test_data/
 
 # Stray windows/ at workspace root (leftover from before restructure — should not exist)
 /windows/
+
+# Workspace lockfile lives at root, not in member packages.
+# The apps/windows_app/pubspec.lock is a stale leftover from before the
+# workspace restructure. Flutter deletes it and creates root pubspec.lock
+# instead. Both should be gitignored to avoid the constant "deleted/untracked"
+# noise in git status.
+apps/windows_app/pubspec.lock
+/pubspec.lock
