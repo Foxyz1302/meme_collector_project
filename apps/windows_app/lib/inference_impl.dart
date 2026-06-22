@@ -185,7 +185,7 @@ class ClipTokenizer {
       word = newWord;
       if (word.length == 1) break;
       pairs = _getPairs(word);
-    });
+    }
 
     return word;
   }
