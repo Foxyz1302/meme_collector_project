@@ -160,7 +160,7 @@ class ClipTokenizer {
     var word = token.split('');
     var pairs = _getPairs(word);
 
-    while (true {
+    while (true) {
       final minPair = _findMinPair(pairs);
       if (minPair == null) break;
 
