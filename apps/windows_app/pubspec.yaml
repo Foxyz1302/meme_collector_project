@@ -2,6 +2,7 @@ name: windows_app
 description: "Reaction Roulette — Windows desktop client."
 publish_to: none
 version: 0.2.0+1
+resolution: workspace
 
 environment:
   sdk: ^3.13.0-103.1.beta

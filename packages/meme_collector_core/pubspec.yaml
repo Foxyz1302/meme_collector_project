@@ -2,6 +2,7 @@ name: meme_collector_core
 description: "Backend core for Reaction Roulette. Pure Dart — no Flutter deps. Storage, search, ingest, model2vec text embeddings, and abstract inference interfaces."
 publish_to: none
 version: 0.1.0
+resolution: workspace
 
 environment:
   sdk: ^3.13.0-103.1.beta
