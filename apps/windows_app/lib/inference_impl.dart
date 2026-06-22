@@ -2,23 +2,22 @@
 /// interfaces defined in meme_collector_core/inference.dart.
 ///
 /// This file lives in the app (not core) because it depends on Flutter-only
-/// packages (flutter_onnxruntime... actually onnxruntime_v2, and model2vec).
-/// Core stays pure-Dart for the future server migration.
+/// packages (onnxruntime_v2, model2vec, image). Core stays pure-Dart for
+/// the future server migration.
 ///
-/// Three implementations:
-///   - ClipTextEmbedder  — CLIP text tower for cross-modal query embedding
-///   - ClipImageEmbedder  — CLIP vision tower for image embeddings
-///   - PpocrEngine        — PP-OCRv5 det + rec pipeline (TODO)
-///   - Model2VecEmbedder  — model2vec for pure-text embedding (TODO)
-///
-/// The CLIP BPE tokenizer is the most fragile piece. It's a Dart port of
-/// the HuggingFace tokenizers BPE algorithm, reading from tokenizer.json.
+/// Four implementations:
+///   - ClipTextEmbedder   — CLIP text tower for cross-modal query embedding
+///   - ClipImageEmbedder   — CLIP vision tower for image embeddings
+///   - Model2VecEmbedder   — model2vec for pure-text embedding (fast)
+///   - PpocrEngine         — PP-OCRv5 det + rec pipeline (TODO)
 
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:image/image.dart' as img;
 import 'package:meme_collector_core/meme_collector_core.dart';
+import 'package:model2vec/model2vec.dart';
 import 'package:onnxruntime_v2/onnxruntime_v2.dart';
 import 'package:path/path.dart' as p;
 
@@ -380,23 +379,58 @@ class ClipImageEmbedder implements ImageEmbedder {
   /// Preprocess an image file for CLIP vision tower.
   ///
   /// Steps:
-  ///   1. Decode image (PNG, JPEG, WebP, GIF first frame)
-  ///   2. Resize to 224x224 (bicubic)
-  ///   3. Convert RGB
+  ///   1. Decode image (PNG, JPEG, WebP, GIF first frame) via package:image
+  ///   2. Resize to 224x224 (bicubic) — CLIP's expected input size
+  ///   3. Convert to RGB (drop alpha)
   ///   4. Normalize: (pixel / 255 - mean) / std
   ///      mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225]
-  ///   5. Transpose HWC → CHW
+  ///   5. Transpose HWC → CHW (channel-first for ONNX)
   ///   6. Flatten to Float32List of length 3*224*224 = 150528
-  ///
-  /// TODO: Use the `image` package for decode + resize. For now this is a
-  /// placeholder that throws — implement when wiring into the app.
   Future<Float32List> _preprocessImage(String imagePath) async {
-    // Will be implemented using package:image (pure Dart, no platform deps)
-    // when we wire this into the real ingest pipeline.
-    //
-    // For now, this is a placeholder. The validation test doesn't call this
-    // method — it only tests that the model loads and accepts synthetic input.
-    throw UnimplementedError('Image preprocessing not yet implemented');
+    // Decode the image. package:image handles PNG/JPEG/WebP/GIF/etc.
+    // For animated GIFs, decodeImage returns the first frame by default.
+    final bytes = await File(imagePath).readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      throw StateError('Could not decode image: $imagePath');
+    }
+
+    // Resize to 224x224 using bicubic interpolation (CLIP standard).
+    // Maintains aspect ratio by squashing — CLIP doesn't do center crop
+    // in the ONNX model, so we do it here.
+    final resized = img.copyResize(
+      decoded,
+      width: 224,
+      height: 224,
+      interpolation: img.Interpolation.cubic,
+    );
+
+    // CLIP normalization constants (ImageNet mean/std)
+    const meanR = 0.485, meanG = 0.456, meanB = 0.406;
+    const stdR = 0.229, stdG = 0.224, stdB = 0.225;
+
+    // Output: CHW float32, length 3*224*224 = 150528
+    final pixelValues = Float32List(3 * 224 * 224);
+
+    // Iterate pixels in HWC order, write to CHW order
+    for (var y = 0; y < 224; y++) {
+      for (var x = 0; x < 224; x++) {
+        final pixel = resized.getPixel(x, y);
+        // getPixel returns a Pixel with .r .g .b .a (normalized 0-1 in v4.x)
+        // Convert to 0-1 range if needed
+        final r = pixel.r.toDouble();
+        final g = pixel.g.toDouble();
+        final b = pixel.b.toDouble();
+
+        // Normalize: (x - mean) / std
+        final hwcIdx = y * 224 + x;
+        pixelValues[0 * 224 * 224 + hwcIdx] = ((r - meanR) / stdR).toDouble();
+        pixelValues[1 * 224 * 224 + hwcIdx] = ((g - meanG) / stdG).toDouble();
+        pixelValues[2 * 224 * 224 + hwcIdx] = ((b - meanB) / stdB).toDouble();
+      }
+    }
+
+    return pixelValues;
   }
 }
 
@@ -421,4 +455,79 @@ Float32List _flattenToFloat32List(dynamic value) {
 
   recurse(value);
   return Float32List.fromList(flat);
+}
+
+// ─── Model2Vec Embedder ─────────────────────────────────────────────────────
+
+/// model2vec text embedder — fast static embeddings for pure-text search.
+///
+/// Uses potion-base-32M (512-dim) from minishlab. Much faster than CLIP
+/// text tower for query embedding (~1ms vs ~70ms). Used for the main
+/// text search path. CLIP text tower is reserved for cross-modal queries
+/// (text → image search).
+///
+/// model2vec uses Native Assets + Rust FFI. Requires Rust toolchain at
+/// build time. The native library is bundled automatically.
+class Model2VecEmbedder implements TextEmbedder {
+  final String _modelPath;
+  final int _dimension;
+
+  bool _initialized = false;
+
+  Model2VecEmbedder({
+    required String modelPath,
+    int dimension = 512,
+  })  : _modelPath = modelPath,
+        _dimension = dimension;
+
+  @override
+  int get dimension => _dimension;
+
+  @override
+  Future<void> init() async {
+    if (_initialized) return;
+
+    // Model2Vec.instance is a singleton. initEmbedder takes a HuggingFace
+    // repo ID or a local directory path. We pass the local path.
+    //
+    // The model dir should contain:
+    //   - model.safetensors
+    //   - tokenizer.json
+    //   - tokenizer_config.json
+    //   - special_tokens_map.json
+    //   - config.json
+    Model2Vec.instance.initEmbedder(_modelPath);
+
+    _initialized = true;
+  }
+
+  @override
+  Future<Float32List> embed(String text) async {
+    if (!_initialized) {
+      throw StateError('Model2VecEmbedder not initialized. Call init() first.');
+    }
+
+    // generateEmbeddingAsync runs in a background isolate — doesn't block UI.
+    // model2vec already L2-normalizes by default (isNormalized returns true),
+    // so we don't need to call l2Normalize again.
+    final embedding = await Model2Vec.instance.generateEmbeddingAsync(text);
+
+    // Verify dimension matches what we expect
+    if (embedding.length != _dimension) {
+      throw StateError(
+          'Model2Vec returned ${embedding.length}-dim vector, expected $_dimension');
+    }
+
+    return embedding;
+  }
+
+  /// Batch embed multiple texts at once. More efficient than calling embed()
+  /// in a loop — model2vec uses Rust SIMD for batch processing.
+  Future<List<Float32List>> embedBatch(List<String> texts) async {
+    if (!_initialized) {
+      throw StateError('Model2VecEmbedder not initialized. Call init() first.');
+    }
+
+    return await Model2Vec.instance.generateBatchEmbeddingsAsync(texts);
+  }
 }

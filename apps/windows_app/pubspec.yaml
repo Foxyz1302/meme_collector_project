@@ -36,6 +36,10 @@ dependencies:
   #   trade-off for GPU support.
   onnxruntime_v2: ^1.23.2+2
 
+  # Image decoding + resizing for CLIP vision tower preprocessing.
+  # Pure Dart, no platform deps. Handles PNG/JPEG/WebP/GIF (first frame).
+  image: ^4.9.1
+
   # Backend (path dep, same workspace)
   meme_collector_core:
     path: ../../packages/meme_collector_core
