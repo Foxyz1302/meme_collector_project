@@ -562,12 +562,18 @@ class Coordinator {
 
   void _onSearchResponse(WorkerMessage msg) {
     if (msg is SearchResponse) {
+      // Route to whichever queue is waiting. Both searches and hotlists
+      // return SearchResponse, so we check both queues.
       if (_pendingSearches.isNotEmpty) {
         _pendingSearches.removeAt(0).complete(msg.results);
+      } else if (_pendingHotlists.isNotEmpty) {
+        _pendingHotlists.removeAt(0).complete(msg.results);
       }
     } else if (msg is SearchError) {
       if (_pendingSearches.isNotEmpty) {
         _pendingSearches.removeAt(0).complete([]);
+      } else if (_pendingHotlists.isNotEmpty) {
+        _pendingHotlists.removeAt(0).complete([]);
       }
     }
   }
