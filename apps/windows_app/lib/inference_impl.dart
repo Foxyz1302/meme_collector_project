@@ -438,8 +438,6 @@ class ClipImageEmbedder implements ImageEmbedder {
     }
 
     // Resize to 224x224 using bicubic interpolation (CLIP standard).
-    // Maintains aspect ratio by squashing — CLIP doesn't do center crop
-    // in the ONNX model, so we do it here.
     final resized = img.copyResize(
       decoded,
       width: 224,
@@ -458,17 +456,19 @@ class ClipImageEmbedder implements ImageEmbedder {
     for (var y = 0; y < 224; y++) {
       for (var x = 0; x < 224; x++) {
         final pixel = resized.getPixel(x, y);
-        // getPixel returns a Pixel with .r .g .b .a (normalized 0-1 in v4.x)
-        // Convert to 0-1 range if needed
-        final r = pixel.r.toDouble();
-        final g = pixel.g.toDouble();
-        final b = pixel.b.toDouble();
+        // package:image v4: use rNormalized/gNormalized/bNormalized to get
+        // values in 0.0-1.0 range regardless of the image's bit depth.
+        // Using .r/.g/.b directly gives 0-255 for 8-bit images, which would
+        // cause a 255x scaling error in the normalization.
+        final r = pixel.rNormalized;
+        final g = pixel.gNormalized;
+        final b = pixel.bNormalized;
 
-        // Normalize: (x - mean) / std
+        // Normalize: (x - mean) / std, where x is in [0, 1]
         final hwcIdx = y * 224 + x;
-        pixelValues[0 * 224 * 224 + hwcIdx] = ((r - meanR) / stdR).toDouble();
-        pixelValues[1 * 224 * 224 + hwcIdx] = ((g - meanG) / stdG).toDouble();
-        pixelValues[2 * 224 * 224 + hwcIdx] = ((b - meanB) / stdB).toDouble();
+        pixelValues[0 * 224 * 224 + hwcIdx] = (r - meanR) / stdR;
+        pixelValues[1 * 224 * 224 + hwcIdx] = (g - meanG) / stdG;
+        pixelValues[2 * 224 * 224 + hwcIdx] = (b - meanB) / stdB;
       }
     }
 

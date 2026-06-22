@@ -25,6 +25,7 @@ import 'dart:math' show sqrt;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:integration_test/integration_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -103,6 +104,15 @@ void main() {
     final catImagePath = p.join(testDataDir, 'cat.jpg');
     expect(File(catImagePath).existsSync(), true,
         reason: 'cat.jpg test image missing');
+
+    // Debug: print some pixel values to verify the image decoded correctly
+    final bytes = await File(catImagePath).readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    expect(decoded, isNotNull, reason: 'Could not decode cat.jpg');
+    print('  cat.jpg dimensions: ${decoded!.width}x${decoded.height}');
+    final pixel0 = decoded.getPixel(0, 0);
+    print('  cat.jpg pixel(0,0) raw: r=${pixel0.r} g=${pixel0.g} b=${pixel0.b}');
+    print('  cat.jpg pixel(0,0) normalized: r=${pixel0.rNormalized} g=${pixel0.gNormalized} b=${pixel0.bNormalized}');
 
     final vec = await imageEmbedder.embedFile(catImagePath);
     expect(vec.length, 512, reason: 'embedding dimension');
