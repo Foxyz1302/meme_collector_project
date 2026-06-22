@@ -398,12 +398,14 @@ class SearchService {
     addRrf(imageHits);
 
     // Apply usage boost + collect results
+    // Skip reactions not in reactionsById (stale vectors on disk for deleted reactions)
     final results = <SearchResult>[];
     for (final entry in rrfScores.entries) {
       final id = entry.key;
       final rrf = entry.value;
       final reaction = reactionsById[id];
-      final usageCount = reaction?.usageCount ?? 0;
+      if (reaction == null) continue; // stale — vector exists but metadata doesn't
+      final usageCount = reaction.usageCount;
       final usageBoost = _usageBoost * math.log(1 + usageCount);
       final score = rrf + usageBoost;
       results.add(SearchResult(
