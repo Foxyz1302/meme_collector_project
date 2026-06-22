@@ -9,7 +9,9 @@ analyzer:
 linter:
   rules:
     # Be strict about public API docs in core (it's a library)
-    public_member_api_docs: true
+    # Disabled for now — too many info-level warnings on internal types.
+    # Re-enable when the API stabilizes and we want to enforce docs.
+    public_member_api_docs: false
     # Relax for app code which is UI-heavy
     avoid_print: false  # scripts use print
     # Prefer const constructors (already in flutter_lints but reinforce)

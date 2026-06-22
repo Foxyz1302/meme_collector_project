@@ -178,6 +178,16 @@ class Storage {
     _saveDebounce = Timer(delay, _doSave);
   }
 
+  /// Force-write metadata immediately (bypasses debounce). Used by the
+  /// Coordinator's _doSave() which manages its own debounce timing.
+  Future<void> saveNow(Metadata metadata) async {
+    await ensureDirectoriesExist();
+    final tmpFile = File(metadataTmpPath);
+    final json = const JsonEncoder.withIndent('  ').convert(metadata.toJson());
+    await tmpFile.writeAsString(json, flush: true);
+    await atomicRename(metadataTmpPath, metadataPath);
+  }
+
   /// Force-write any pending debounced save. Call on app exit.
   Future<void> flushNow() async {
     if (_flushing) return;
@@ -234,7 +244,6 @@ class Storage {
 
     // Copy everything except the metadata.json (we'll write it last)
     final entries = await Directory(rootPath).list(recursive: true).toList();
-    var copiedFiles = 0;
     for (final entry in entries) {
       if (entry is! File) continue;
       final relative = p.relative(entry.path, from: rootPath);
@@ -244,7 +253,6 @@ class Storage {
       final dest = p.join(newRootPath, relative);
       await Directory(p.dirname(dest)).create(recursive: true);
       await entry.copy(dest);
-      copiedFiles++;
     }
 
     // Now write the metadata to the new location

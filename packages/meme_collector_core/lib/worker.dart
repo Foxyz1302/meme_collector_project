@@ -279,7 +279,7 @@ class Coordinator {
 
     if (_clipTextEmbedder != null) {
       try {
-        clipVec = await _clipTextEmbedder!.embed(query);
+        clipVec = await _clipTextEmbedder.embed(query);
       } catch (_) {
         // CLIP failed — text-only search
       }
@@ -566,7 +566,7 @@ class Coordinator {
 
   Future<void> _doSave() async {
     if (_disposed) return;
-    await _storage.saveMetadata(_metadata);
+    await _storage.saveNow(_metadata);
   }
 }
 
@@ -691,7 +691,6 @@ void _searchIsolateEntry(SendPort mainPort) {
   final keywordIndex = KeywordIndex();
   // reactionsById is rebuilt whenever we get a VectorIndexRebuild or hotlist request
   var reactionsById = <String, Reaction>{};
-  var storageRootPath = '';
 
   final service = SearchService(
     vectorIndex: vectorIndex,
