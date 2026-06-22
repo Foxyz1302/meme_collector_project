@@ -41,8 +41,13 @@ dependencies:
   image: ^4.9.1
 
   # Path manipulation (used by main.dart, inference_impl.dart, etc.)
-  # Already a transitive dep but we use it directly.
   path: ^1.9.0
+
+  # NOTE: model2vec removed — its Native Assets build hook is incompatible
+  # with Flutter 3.13 beta SDK (HookConfig.code API changed). Using CLIP
+  # text tower for all text embeddings instead (~70ms vs ~1ms, but still
+  # well within the 150ms search debounce budget).
+  # Re-add when model2vec publishes a fix for the code_assets API change.
 
   # Backend (path dep, same workspace)
   meme_collector_core:

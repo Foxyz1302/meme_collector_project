@@ -17,7 +17,6 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 import 'package:meme_collector_core/meme_collector_core.dart';
-import 'package:model2vec/model2vec.dart';
 import 'package:onnxruntime_v2/onnxruntime_v2.dart';
 
 // ─── CLIP BPE Tokenizer ─────────────────────────────────────────────────────
@@ -494,77 +493,29 @@ Float32List _flattenToFloat32List(dynamic value) {
   return Float32List.fromList(flat);
 }
 
-// ─── Model2Vec Embedder ─────────────────────────────────────────────────────
+// ─── CLIP Text Embedder Adapter ─────────────────────────────────────────────
 
-/// model2vec text embedder — fast static embeddings for pure-text search.
+/// Adapter that wraps [ClipTextEmbedder] to implement the [TextEmbedder]
+/// interface.
 ///
-/// Uses potion-base-32M (512-dim) from minishlab. Much faster than CLIP
-/// text tower for query embedding (~1ms vs ~70ms). Used for the main
-/// text search path. CLIP text tower is reserved for cross-modal queries
-/// (text → image search).
+/// This is used as the query embedder and ingest text embedder now that
+/// model2vec is removed (its Native Assets build hook was incompatible
+/// with the Flutter 3.13 beta SDK).
 ///
-/// model2vec uses Native Assets + Rust FFI. Requires Rust toolchain at
-/// build time. The native library is bundled automatically.
-class Model2VecEmbedder implements TextEmbedder {
-  final String _modelPath;
-  final int _dimension;
+/// CLIP text tower is ~70ms per embedding vs model2vec's ~1ms, but still
+/// well within the 150ms search debounce budget. When model2vec publishes
+/// a fix for the code_assets API change, swap this back out.
+class ClipTextEmbedderAdapter implements TextEmbedder {
+  final ClipTextEmbedder _clip;
 
-  bool _initialized = false;
-
-  Model2VecEmbedder({
-    required String modelPath,
-    int dimension = 512,
-  })  : _modelPath = modelPath,
-        _dimension = dimension;
+  ClipTextEmbedderAdapter(this._clip);
 
   @override
-  int get dimension => _dimension;
+  int get dimension => _clip.dimension;
 
   @override
-  Future<void> init() async {
-    if (_initialized) return;
-
-    // Model2Vec.instance is a singleton. initEmbedder takes a HuggingFace
-    // repo ID or a local directory path. We pass the local path.
-    //
-    // The model dir should contain:
-    //   - model.safetensors
-    //   - tokenizer.json
-    //   - tokenizer_config.json
-    //   - special_tokens_map.json
-    //   - config.json
-    Model2Vec.instance.initEmbedder(_modelPath);
-
-    _initialized = true;
-  }
+  Future<void> init() async => _clip.init();
 
   @override
-  Future<Float32List> embed(String text) async {
-    if (!_initialized) {
-      throw StateError('Model2VecEmbedder not initialized. Call init() first.');
-    }
-
-    // generateEmbeddingAsync runs in a background isolate — doesn't block UI.
-    // model2vec already L2-normalizes by default (isNormalized returns true),
-    // so we don't need to call l2Normalize again.
-    final embedding = await Model2Vec.instance.generateEmbeddingAsync(text);
-
-    // Verify dimension matches what we expect
-    if (embedding.length != _dimension) {
-      throw StateError(
-          'Model2Vec returned ${embedding.length}-dim vector, expected $_dimension');
-    }
-
-    return embedding;
-  }
-
-  /// Batch embed multiple texts at once. More efficient than calling embed()
-  /// in a loop — model2vec uses Rust SIMD for batch processing.
-  Future<List<Float32List>> embedBatch(List<String> texts) async {
-    if (!_initialized) {
-      throw StateError('Model2VecEmbedder not initialized. Call init() first.');
-    }
-
-    return await Model2Vec.instance.generateBatchEmbeddingsAsync(texts);
-  }
+  Future<Float32List> embed(String text) async => _clip.embed(text);
 }

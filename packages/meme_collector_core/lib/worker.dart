@@ -658,28 +658,31 @@ class SearchIsolate {
   SendPort? _sendPort;
   ReceivePort? _receivePort;
   Isolate? _isolate;
-  StreamSubscription? _sub;
+  Stream<WorkerMessage>? _responseStream;
 
   /// Stream of responses from the search isolate.
-  Stream<WorkerMessage> get responses async* {
-    if (_receivePort == null) return;
-    await for (final msg in _receivePort!) {
-      if (msg is WorkerMessage) yield msg;
-    }
-  }
+  /// Uses broadcast stream so multiple listeners can subscribe.
+  Stream<WorkerMessage> get responses =>
+      _responseStream ?? const Stream.empty();
 
   Future<void> spawn() async {
     _receivePort = ReceivePort();
+    // Convert to broadcast stream so both the handshake + the public
+    // responses stream can listen without "already listened to" errors.
+    final broadcast = _receivePort!.asBroadcastStream();
+    _responseStream = broadcast.whereType<WorkerMessage>();
+
     _isolate = await Isolate.spawn(_searchIsolateEntry, _receivePort!.sendPort);
 
     // Wait for the isolate to send us its SendPort
     final completer = Completer<SendPort>();
-    _sub = _receivePort!.listen((msg) {
+    final sub = broadcast.listen((msg) {
       if (msg is SendPort && !completer.isCompleted) {
         completer.complete(msg);
       }
     });
     _sendPort = await completer.future;
+    await sub.cancel();
   }
 
   void send(WorkerMessage msg) {
@@ -687,7 +690,6 @@ class SearchIsolate {
   }
 
   Future<void> dispose() async {
-    await _sub?.cancel();
     _receivePort?.close();
     _isolate?.kill(priority: Isolate.immediate);
   }
@@ -782,15 +784,12 @@ class IngestIsolate {
   SendPort? _sendPort;
   ReceivePort? _receivePort;
   Isolate? _isolate;
-  StreamSubscription? _sub;
+  Stream<WorkerMessage>? _eventStream;
 
   /// Stream of events from the ingest isolate.
-  Stream<WorkerMessage> get events async* {
-    if (_receivePort == null) return;
-    await for (final msg in _receivePort!) {
-      if (msg is WorkerMessage) yield msg;
-    }
-  }
+  /// Uses broadcast stream so multiple listeners can subscribe.
+  Stream<WorkerMessage> get events =>
+      _eventStream ?? const Stream.empty();
 
   Future<void> spawn({
     required String storageRootPath,
@@ -801,6 +800,10 @@ class IngestIsolate {
     required IngestConfig ingestConfig,
   }) async {
     _receivePort = ReceivePort();
+    // Convert to broadcast stream so both the handshake + the public
+    // events stream can listen without "already listened to" errors.
+    final broadcast = _receivePort!.asBroadcastStream();
+    _eventStream = broadcast.whereType<WorkerMessage>();
 
     final init = _IngestIsolateInit(
       mainPort: _receivePort!.sendPort,
@@ -814,13 +817,15 @@ class IngestIsolate {
 
     _isolate = await Isolate.spawn(_ingestIsolateEntry, init);
 
+    // Wait for the isolate to send us its SendPort
     final completer = Completer<SendPort>();
-    _sub = _receivePort!.listen((msg) {
+    final sub = broadcast.listen((msg) {
       if (msg is SendPort && !completer.isCompleted) {
         completer.complete(msg);
       }
     });
     _sendPort = await completer.future;
+    await sub.cancel();
   }
 
   void send(WorkerMessage msg) {
@@ -828,7 +833,6 @@ class IngestIsolate {
   }
 
   Future<void> dispose() async {
-    await _sub?.cancel();
     _receivePort?.close();
     _isolate?.kill(priority: Isolate.immediate);
   }
