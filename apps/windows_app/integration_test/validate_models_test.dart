@@ -51,6 +51,10 @@ void main() {
     // OrtProvider is an enum — convert to strings for printing
     final providerNames = providers.map((p) => p.toString()).toList();
     print('\n>>> Available ORT execution providers: $providerNames');
+    print('>>> Provider count: ${providers.length}');
+    for (var i = 0; i < providers.length; i++) {
+      print('>>>   [$i] ${providers[i]} (index=${providers[i].index})');
+    }
     report['execution_providers'] = ModelReport(
       loaded: true,
       sanityPassed: true,
@@ -276,8 +280,26 @@ Future<ModelReport> _validateOnnxModel({
     // Configure session options with EP selection
     final sessionOptions = OrtSessionOptions();
     if (useGpu) {
-      // Try GPU providers first, fall back to CPU
-      sessionOptions.appendDefaultProviders();
+      // appendDefaultProviders() didn't pick up DirectML in the previous run
+      // (showed [CPU, CPU] instead). Try DirectML explicitly first, then fall
+      // back to appendDefaultProviders() if the method doesn't exist or fails.
+      var directMlLoaded = false;
+      try {
+        // ignore: avoid_dynamic_calls
+        (sessionOptions as dynamic).appendDirectMLProvider();
+        directMlLoaded = true;
+        print('  [$name] DirectML provider appended explicitly');
+      } catch (e) {
+        print('  [$name] appendDirectMLProvider failed: $e');
+      }
+      if (!directMlLoaded) {
+        try {
+          sessionOptions.appendDefaultProviders();
+          print('  [$name] appendDefaultProviders() called (fallback)');
+        } catch (e) {
+          print('  [$name] appendDefaultProviders failed: $e');
+        }
+      }
     }
     // For CPU-only: don't append any providers, ORT defaults to CPU.
 
@@ -325,20 +347,28 @@ Future<ModelReport> _validateOnnxModel({
       final firstOutput = outputs.first;
       if (firstOutput != null) {
         try {
-          // OrtValueTensor.value returns dynamic — typically a flattened List
+          // OrtValueTensor.value returns dynamic. For shape [1, 512] it
+          // returns a nested List<List<double>> — outer length 1, inner
+          // length 512. We need to flatten.
           final value = firstOutput.value;
-          if (value is List) {
-            actualOutputLen = value.length;
-            print('  [$name] output len: ${value.length}');
-            if (value.isNotEmpty) {
-              final preview = value.take(5).toList();
-              print('  [$name] output[0..5]: $preview');
-            }
-          } else {
-            print('  [$name] output type: ${value.runtimeType}');
+          print('  [$name] output runtimeType: ${value.runtimeType}');
+
+          // Recursively flatten nested lists to a flat List<double>
+          final flattened = _flattenToList(value);
+          actualOutputLen = flattened.length;
+          print('  [$name] output flattened len: ${flattened.length}');
+          if (flattened.isNotEmpty) {
+            final preview = flattened.take(5).toList();
+            print('  [$name] output[0..5]: $preview');
           }
-        } catch (e) {
+
+          // Also print the raw structure for debugging
+          if (value is List && value.length <= 5) {
+            print('  [$name] output raw (small): $value');
+          }
+        } catch (e, st) {
           print('  [$name] could not read output: $e');
+          print('  [$name] stack: $st');
         }
         // Release output tensor
         firstOutput.release();
@@ -494,4 +524,30 @@ ModelReport _validateModel2VecFiles(String modelDir) {
       error: e.toString(),
     );
   }
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/// Recursively flatten a nested List structure into a flat List.
+///
+/// OrtValueTensor.value returns data shaped like the output tensor:
+///   - shape [1, 512] → List<List<double>> with outer len 1, inner len 512
+///   - shape [1, 1, 960, 960] → 4-level nested
+///   - shape [1, 40, 438] → 3-level nested
+///
+/// For validation we just want the total element count, so flatten everything.
+List<dynamic> _flattenToList(dynamic value) {
+  final result = <dynamic>[];
+  void recurse(dynamic v) {
+    if (v is List) {
+      for (final item in v) {
+        recurse(item);
+      }
+    } else {
+      result.add(v);
+    }
+  }
+
+  recurse(value);
+  return result;
 }
