@@ -7,18 +7,22 @@
 /// fails to load or produces garbage output, fix or find an alternative
 /// before proceeding.
 ///
-/// Uses onnxruntime_v2 (not flutter_onnxruntime) for GPU support:
-///   - DirectML on Windows (GTX 1080, 3080 Ti, etc.)
-///   - CUDA on Linux (future server)
-///   - appendDefaultProviders() auto-selects best available EP with CPU fallback
+/// Uses onnxruntime_v2 with appendDefaultProviders() which auto-selects the
+/// best available execution provider:
+///   - If CUDA Toolkit + cuDNN are installed → CUDA EP (fastest on NVIDIA)
+///   - If TensorRT is installed → TensorRT EP (fastest overall)
+///   - If full DX12 GPU support → DirectML EP
+///   - Otherwise → CPU EP (always works)
 ///
-/// What it validates:
-///   1. Available execution providers (DirectML? CUDA? CPU only?)
-///   2. CLIP text tower (text_model_fp16.onnx) — loads, accepts synthetic input
-///   3. CLIP vision tower (vision_model_fp16.onnx) — loads, accepts synthetic input
-///   4. PP-OCRv5 detection (det.onnx) — loads, accepts synthetic input
-///   5. PP-OCRv5 recognition (rec.onnx) — loads, accepts synthetic input
-///   6. model2vec (potion-base-32M) — file presence check (real API wiring TODO)
+/// On the dev machine (GTX 1080, no full DX12, CUDA toolkit uninstalled),
+/// this currently falls back to CPU. Performance is still acceptable:
+///   CLIP text:  ~71ms per query (well within 150ms debounce)
+///   CLIP vision: ~77ms per image (fine for background ingest)
+///   PP-OCR det:  ~1.3s on 960px (will be ~90ms on 256px thumbnails)
+///   PP-OCR rec:  ~13ms per text region
+///
+/// Future GPU path: install CUDA Toolkit + cuDNN on Windows, or move to the
+/// Linux server with a 3080 Ti where CUDA EP will auto-load.
 
 import 'dart:convert';
 import 'dart:io';
@@ -42,106 +46,70 @@ void main() {
   print('Models dir: $modelsDir');
 
   setUpAll(() {
-    // Initialize ORT environment once.
     OrtEnv.instance.init();
   });
 
   test('detect available execution providers', () async {
     final providers = OrtEnv.instance.availableProviders();
-    // OrtProvider is an enum — convert to strings for printing
     final providerNames = providers.map((p) => p.toString()).toList();
     print('\n>>> Available ORT execution providers: $providerNames');
-    print('>>> Provider count: ${providers.length}');
-    for (var i = 0; i < providers.length; i++) {
-      print('>>>   [$i] ${providers[i]} (index=${providers[i].index})');
-    }
     report['execution_providers'] = ModelReport(
       loaded: true,
       sanityPassed: true,
       inputNames: providerNames,
     );
-    // Just print, don't assert — we want to know what's available even if GPU EPs aren't.
   });
 
-  test('validate CLIP text tower (text_model_fp16.onnx) on CPU', () async {
+  test('validate CLIP text tower (text_model_fp16.onnx)', () async {
     final result = await _validateOnnxModel(
-      name: 'clip_text_cpu',
+      name: 'clip_text',
       modelPath: p.join(modelsDir, 'clip_text_fp16.onnx'),
       syntheticInputs: _syntheticClipTextInputs(),
-      useGpu: false,
-      outputLen: 512,
+      expectedOutputLen: 512,
     );
-    report['clip_text_cpu'] = result;
+    report['clip_text'] = result;
     expect(result.loaded, true,
-        reason: result.error ?? 'CLIP text failed to load on CPU');
+        reason: result.error ?? 'CLIP text failed to load');
+    expect(result.sanityPassed, true,
+        reason: 'CLIP text output length != 512');
   });
 
-  test('validate CLIP text tower (text_model_fp16.onnx) on GPU', () async {
+  test('validate CLIP vision tower (vision_model_fp16.onnx)', () async {
     final result = await _validateOnnxModel(
-      name: 'clip_text_gpu',
-      modelPath: p.join(modelsDir, 'clip_text_fp16.onnx'),
-      syntheticInputs: _syntheticClipTextInputs(),
-      useGpu: true,
-      outputLen: 512,
-    );
-    report['clip_text_gpu'] = result;
-    // Don't fail if GPU unavailable — just record.
-    if (!result.loaded) {
-      print('  [clip_text_gpu] SKIPPED: ${result.error}');
-    }
-  });
-
-  test('validate CLIP vision tower (vision_model_fp16.onnx) on CPU', () async {
-    final result = await _validateOnnxModel(
-      name: 'clip_vision_cpu',
+      name: 'clip_vision',
       modelPath: p.join(modelsDir, 'clip_vision_fp16.onnx'),
       syntheticInputs: _syntheticClipVisionInputs(),
-      useGpu: false,
-      outputLen: 512,
+      expectedOutputLen: 512,
     );
-    report['clip_vision_cpu'] = result;
+    report['clip_vision'] = result;
     expect(result.loaded, true,
-        reason: result.error ?? 'CLIP vision failed to load on CPU');
+        reason: result.error ?? 'CLIP vision failed to load');
+    expect(result.sanityPassed, true,
+        reason: 'CLIP vision output length != 512');
   });
 
-  test('validate CLIP vision tower (vision_model_fp16.onnx) on GPU', () async {
+  test('validate PP-OCRv5 detection (det.onnx)', () async {
     final result = await _validateOnnxModel(
-      name: 'clip_vision_gpu',
-      modelPath: p.join(modelsDir, 'clip_vision_fp16.onnx'),
-      syntheticInputs: _syntheticClipVisionInputs(),
-      useGpu: true,
-      outputLen: 512,
-    );
-    report['clip_vision_gpu'] = result;
-    if (!result.loaded) {
-      print('  [clip_vision_gpu] SKIPPED: ${result.error}');
-    }
-  });
-
-  test('validate PP-OCRv5 detection (det.onnx) on CPU', () async {
-    final result = await _validateOnnxModel(
-      name: 'ppocr_det_cpu',
+      name: 'ppocr_det',
       modelPath: p.join(modelsDir, 'ppocr_det.onnx'),
       syntheticInputs: _syntheticPpocrDetInputs(),
-      useGpu: false,
-      outputLen: null,
+      expectedOutputLen: null, // variable: 960*960 = 921600 for this input size
     );
-    report['ppocr_det_cpu'] = result;
+    report['ppocr_det'] = result;
     expect(result.loaded, true,
-        reason: result.error ?? 'PP-OCR det failed to load on CPU');
+        reason: result.error ?? 'PP-OCR det failed to load');
   });
 
-  test('validate PP-OCRv5 recognition (rec.onnx) on CPU', () async {
+  test('validate PP-OCRv5 recognition (rec.onnx)', () async {
     final result = await _validateOnnxModel(
-      name: 'ppocr_rec_cpu',
+      name: 'ppocr_rec',
       modelPath: p.join(modelsDir, 'ppocr_rec.onnx'),
       syntheticInputs: _syntheticPpocrRecInputs(),
-      useGpu: false,
-      outputLen: null,
+      expectedOutputLen: null, // 40 * 438 = 17520
     );
-    report['ppocr_rec_cpu'] = result;
+    report['ppocr_rec'] = result;
     expect(result.loaded, true,
-        reason: result.error ?? 'PP-OCR rec failed to load on CPU');
+        reason: result.error ?? 'PP-OCR rec failed to load');
   });
 
   test('validate model2vec (potion-base-32M) file presence', () async {
@@ -152,7 +120,6 @@ void main() {
   });
 
   tearDownAll(() async {
-    // Write the report to disk for inspection
     final reportPath = p.normalize(p.join(
         Directory.current.path, '..', '..', 'scripts', 'validation_report.json'));
     final reportFile = File(reportPath);
@@ -172,38 +139,13 @@ void main() {
       print('  loaded:        ${r.loaded}');
       print('  load_ms:       ${r.loadMs?.toStringAsFixed(1) ?? 'N/A'}');
       print('  infer_ms:      ${r.inferMs?.toStringAsFixed(1) ?? 'N/A'}');
-      print('  output_len:    ${r.outputShape?.firstOrNull ?? 'N/A'}');
+      print('  output_len:    ${r.outputLen ?? 'N/A'}');
       print('  sanity_passed: ${r.sanityPassed}');
       if (r.error != null) print('  error:         ${r.error}');
       if (r.inputNames != null) print('  input_names:   ${r.inputNames}');
       if (r.outputNames != null) print('  output_names:  ${r.outputNames}');
     }
     print('\nReport saved to: $reportPath');
-
-    // Print GPU vs CPU summary if we have both
-    final cpuText = report['clip_text_cpu'];
-    final gpuText = report['clip_text_gpu'];
-    final cpuVision = report['clip_vision_cpu'];
-    final gpuVision = report['clip_vision_gpu'];
-    print('\n${'-' * 60}');
-    print('GPU vs CPU SUMMARY');
-    print('${'-' * 60}');
-    if (cpuText != null && gpuText != null && gpuText.loaded) {
-      final speedup = (cpuText.inferMs ?? 1) / (gpuText.inferMs ?? 1);
-      print('CLIP text:  CPU ${cpuText.inferMs?.toStringAsFixed(1)}ms  |  '
-          'GPU ${gpuText.inferMs?.toStringAsFixed(1)}ms  |  '
-          'speedup ${speedup.toStringAsFixed(2)}×');
-    } else if (gpuText != null && !gpuText.loaded) {
-      print('CLIP text:  GPU unavailable (${gpuText.error})');
-    }
-    if (cpuVision != null && gpuVision != null && gpuVision.loaded) {
-      final speedup = (cpuVision.inferMs ?? 1) / (gpuVision.inferMs ?? 1);
-      print('CLIP vision: CPU ${cpuVision.inferMs?.toStringAsFixed(1)}ms  |  '
-          'GPU ${gpuVision.inferMs?.toStringAsFixed(1)}ms  |  '
-          'speedup ${speedup.toStringAsFixed(2)}×');
-    } else if (gpuVision != null && !gpuVision.loaded) {
-      print('CLIP vision: GPU unavailable (${gpuVision.error})');
-    }
   });
 }
 
@@ -213,7 +155,7 @@ class ModelReport {
   final bool loaded;
   final double? loadMs;
   final double? inferMs;
-  final List<int>? outputShape; // we store output length here (single int in list)
+  final int? outputLen;
   final List<String>? inputNames;
   final List<String>? outputNames;
   final bool sanityPassed;
@@ -223,7 +165,7 @@ class ModelReport {
     required this.loaded,
     this.loadMs,
     this.inferMs,
-    this.outputShape,
+    this.outputLen,
     this.inputNames,
     this.outputNames,
     required this.sanityPassed,
@@ -234,7 +176,7 @@ class ModelReport {
         'loaded': loaded,
         if (loadMs != null) 'load_ms': loadMs,
         if (inferMs != null) 'infer_ms': inferMs,
-        if (outputShape != null) 'output_shape': outputShape,
+        if (outputLen != null) 'output_len': outputLen,
         if (inputNames != null) 'input_names': inputNames,
         if (outputNames != null) 'output_names': outputNames,
         'sanity_passed': sanityPassed,
@@ -260,8 +202,7 @@ Future<ModelReport> _validateOnnxModel({
   required String name,
   required String modelPath,
   required List<_SyntheticInput> syntheticInputs,
-  required bool useGpu,
-  int? outputLen, // expected length of the output (flattened)
+  int? expectedOutputLen,
 }) async {
   final sw = Stopwatch()..start();
   try {
@@ -274,54 +215,28 @@ Future<ModelReport> _validateOnnxModel({
       );
     }
 
-    // Read model bytes from file (OrtSession.fromBuffer takes bytes)
     final modelBytes = await modelFile.readAsBytes();
 
-    // Configure session options with EP selection
+    // Auto-select best available EP (CUDA > TensorRT > DirectML > CPU)
     final sessionOptions = OrtSessionOptions();
-    if (useGpu) {
-      // appendDefaultProviders() didn't pick up DirectML in the previous run
-      // (showed [CPU, CPU] instead). Try DirectML explicitly first, then fall
-      // back to appendDefaultProviders() if the method doesn't exist or fails.
-      var directMlLoaded = false;
-      try {
-        // ignore: avoid_dynamic_calls
-        (sessionOptions as dynamic).appendDirectMLProvider();
-        directMlLoaded = true;
-        print('  [$name] DirectML provider appended explicitly');
-      } catch (e) {
-        print('  [$name] appendDirectMLProvider failed: $e');
-      }
-      if (!directMlLoaded) {
-        try {
-          sessionOptions.appendDefaultProviders();
-          print('  [$name] appendDefaultProviders() called (fallback)');
-        } catch (e) {
-          print('  [$name] appendDefaultProviders failed: $e');
-        }
-      }
-    }
-    // For CPU-only: don't append any providers, ORT defaults to CPU.
+    sessionOptions.appendDefaultProviders();
 
     final session = OrtSession.fromBuffer(modelBytes, sessionOptions);
 
     sw.stop();
     final loadMs = sw.elapsedMilliseconds.toDouble();
 
-    // Get input/output names (sync properties on OrtSession)
     final inputNames = session.inputNames;
     final outputNames = session.outputNames;
 
     print('  [$name] inputs:  $inputNames');
     print('  [$name] outputs: $outputNames');
 
-    // Try inference with synthetic input
     sw..reset()..start();
 
     final inputsMap = <String, OrtValue>{};
     final inputsToRelease = <OrtValue>[];
     for (final synth in syntheticInputs) {
-      // OrtValueTensor.createTensorWithDataList(data, [shape])
       final tensor =
           OrtValueTensor.createTensorWithDataList(synth.data, synth.shape);
       inputsMap[synth.name] = tensor;
@@ -329,51 +244,30 @@ Future<ModelReport> _validateOnnxModel({
     }
 
     final runOptions = OrtRunOptions();
-    // runAsync returns Future<List<OrtValue?>?> — positional list, not a Map
     final outputs = await session.runAsync(runOptions, inputsMap);
 
     sw.stop();
     final inferMs = sw.elapsedMilliseconds.toDouble();
 
-    // Release inputs + runOptions
     for (final t in inputsToRelease) {
       t.release();
     }
     runOptions.release();
 
-    // Read output values
     int? actualOutputLen;
     if (outputs != null && outputs.isNotEmpty) {
       final firstOutput = outputs.first;
       if (firstOutput != null) {
         try {
-          // OrtValueTensor.value returns dynamic. For shape [1, 512] it
-          // returns a nested List<List<double>> — outer length 1, inner
-          // length 512. We need to flatten.
           final value = firstOutput.value;
-          print('  [$name] output runtimeType: ${value.runtimeType}');
-
-          // Recursively flatten nested lists to a flat List<double>
           final flattened = _flattenToList(value);
           actualOutputLen = flattened.length;
-          print('  [$name] output flattened len: ${flattened.length}');
-          if (flattened.isNotEmpty) {
-            final preview = flattened.take(5).toList();
-            print('  [$name] output[0..5]: $preview');
-          }
-
-          // Also print the raw structure for debugging
-          if (value is List && value.length <= 5) {
-            print('  [$name] output raw (small): $value');
-          }
-        } catch (e, st) {
+          print('  [$name] output len: ${flattened.length}');
+        } catch (e) {
           print('  [$name] could not read output: $e');
-          print('  [$name] stack: $st');
         }
-        // Release output tensor
         firstOutput.release();
       }
-      // Release any remaining outputs
       for (var i = 1; i < outputs.length; i++) {
         outputs[i]?.release();
       }
@@ -381,23 +275,22 @@ Future<ModelReport> _validateOnnxModel({
 
     session.release();
 
-    // Verify output length if expected
     var shapeOk = true;
-    if (outputLen != null && actualOutputLen != null) {
-      shapeOk = actualOutputLen == outputLen;
+    if (expectedOutputLen != null && actualOutputLen != null) {
+      shapeOk = actualOutputLen == expectedOutputLen;
     }
 
     return ModelReport(
       loaded: true,
       loadMs: loadMs,
       inferMs: inferMs,
-      outputShape: actualOutputLen != null ? [actualOutputLen] : null,
+      outputLen: actualOutputLen,
       inputNames: inputNames,
       outputNames: outputNames,
       sanityPassed: shapeOk,
       error: shapeOk
           ? null
-          : 'Output len $actualOutputLen != expected $outputLen',
+          : 'Output len $actualOutputLen != expected $expectedOutputLen',
     );
   } catch (e, st) {
     sw.stop();
@@ -414,7 +307,6 @@ Future<ModelReport> _validateOnnxModel({
 // ─── Synthetic input generators ─────────────────────────────────────────────
 
 /// CLIP text tower expects only one input: input_ids (int32[1, 77]).
-/// No attention_mask — the text tower uses causal attention internally.
 List<_SyntheticInput> _syntheticClipTextInputs() {
   final seqLen = 77;
   final inputIds = List<int>.filled(seqLen, 0);
@@ -422,7 +314,6 @@ List<_SyntheticInput> _syntheticClipTextInputs() {
   inputIds[1] = 320; // "a"
   inputIds[2] = 2368; // "cat"
   inputIds[seqLen - 1] = 49407; // EOS
-
   return [
     _SyntheticInput(name: 'input_ids', shape: [1, seqLen], data: inputIds),
   ];
@@ -435,7 +326,7 @@ List<_SyntheticInput> _syntheticClipVisionInputs() {
   final rng = math.Random(42);
   final pixelValues = Float32List(total);
   for (var i = 0; i < total; i++) {
-    pixelValues[i] = (rng.nextDouble() * 2 - 1).toDouble(); // [-1, 1] range
+    pixelValues[i] = (rng.nextDouble() * 2 - 1).toDouble();
   }
   return [
     _SyntheticInput(
@@ -529,13 +420,6 @@ ModelReport _validateModel2VecFiles(String modelDir) {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /// Recursively flatten a nested List structure into a flat List.
-///
-/// OrtValueTensor.value returns data shaped like the output tensor:
-///   - shape [1, 512] → List<List<double>> with outer len 1, inner len 512
-///   - shape [1, 1, 960, 960] → 4-level nested
-///   - shape [1, 40, 438] → 3-level nested
-///
-/// For validation we just want the total element count, so flatten everything.
 List<dynamic> _flattenToList(dynamic value) {
   final result = <dynamic>[];
   void recurse(dynamic v) {
