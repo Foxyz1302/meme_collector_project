@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../state/signals.dart';
-import '../services/search_service.dart';
 
 class MySearchBar extends StatefulWidget {
   const MySearchBar({super.key});
@@ -15,7 +14,7 @@ class MySearchBar extends StatefulWidget {
 class _MySearchBarState extends State<MySearchBar> {
   final _controller = TextEditingController();
   Timer? _debounce;
-  EffectCleanup? _externalSync; // signals_flutter 7.x: effect() returns a cleanup fn
+  EffectCleanup? _externalSync;
 
   @override
   void initState() {
@@ -35,7 +34,7 @@ class _MySearchBarState extends State<MySearchBar> {
   @override
   void dispose() {
     _debounce?.cancel();
-    _externalSync?.call(); // dispose the effect
+    _externalSync?.call();
     _controller.dispose();
     super.dispose();
   }
@@ -44,11 +43,7 @@ class _MySearchBarState extends State<MySearchBar> {
     searchQuery.value = v;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 150), () {
-      isSearching.value = true;
-      SearchService.performSearch(v).then((r) {
-        searchResults.value = r;
-        isSearching.value = false;
-      });
+      performSearch(v);
     });
   }
 

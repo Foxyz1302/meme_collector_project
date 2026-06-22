@@ -1,10 +1,14 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:signals_flutter/signals_flutter.dart';
-import '../models/gif_media.dart';
+import 'package:path/path.dart' as p;
+
+import 'package:meme_collector_core/meme_collector_core.dart';
+
 import '../state/signals.dart';
-import '../services/clipboard_service.dart';
 
 class GifGrid extends StatelessWidget {
   const GifGrid({super.key});
@@ -22,7 +26,10 @@ class GifGrid extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               spacing: 8,
-              children: [const Icon(FLucideIcons.searchX, size: 32), Text(isSearching.value ? 'Searching…' : 'No matches')],
+              children: [
+                const Icon(FLucideIcons.searchX, size: 32),
+                Text(isSearching.value ? 'Searching…' : 'No matches'),
+              ],
             ),
           );
         }
@@ -38,7 +45,7 @@ class GifGrid extends StatelessWidget {
                 FButton(
                   mainAxisSize: MainAxisSize.min,
                   onPress: () {
-                    // TODO: trigger import flow
+                    // TODO: trigger import flow (paste URL dialog)
                   },
                   child: const Text('Add your first reaction'),
                 ),
@@ -56,7 +63,15 @@ class GifGrid extends StatelessWidget {
             childAspectRatio: 1.0,
           ),
           itemCount: items.length,
-          itemBuilder: (context, i) => _GifTile(item: items[i]),
+          itemBuilder: (context, i) {
+            // items is List<SearchResult> — look up the Reaction
+            final result = items[i];
+            final reaction = coordinator?.getReaction(result.reactionId);
+            if (reaction == null) {
+              return const SizedBox.shrink();
+            }
+            return _GifTile(reaction: reaction);
+          },
         );
       },
     );
@@ -64,36 +79,88 @@ class GifGrid extends StatelessWidget {
 }
 
 class _GifTile extends StatelessWidget {
-  final GifMedia item;
-  const _GifTile({required this.item});
+  final Reaction reaction;
+  const _GifTile({required this.reaction});
 
   @override
   Widget build(BuildContext context) {
     final colors = context.theme.colors;
-    return FCard.raw(
-      clipBehavior: Clip.antiAlias, // was: Clip.antebugex (typo)
-      child: InkWell(
-        onTap: () => ClipboardService.copyReaction(item),
-        onLongPress: () {
-          // TODO: long-press -> "add context" popover (smart haptic tagging)
-        },
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            item.thumbnailPath != null
-                ? Image.file(File(item.thumbnailPath!), fit: BoxFit.cover)
-                : Container(
-                    color: colors.muted,
-                    child: Icon(FLucideIcons.image, size: 28, color: colors.mutedForeground),
+    final c = coordinator!;
+
+    // Resolve thumbnail path (relative to storage root)
+    String? thumbnailAbsPath;
+    if (reaction.thumbnailStatic != null) {
+      // storage root is parent of the metadata.json
+      // We need to resolve relative paths against the storage root
+      // For now, use a hack: coordinator stores reactions with relative paths,
+      // we need the absolute path for Image.file
+      // TODO: expose storage root path via coordinator for path resolution
+      // For now, just show placeholder if we can't resolve
+    }
+
+    return SignalBuilder(
+      builder: (context) {
+        final progress = ingestProgress.value[reaction.id];
+
+        return FCard.raw(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () async {
+              // Copy URL to clipboard (the Discord-like behavior)
+              await Clipboard.setData(ClipboardData(text: reaction.url));
+              await c.incrementUsage(reaction.id);
+              if (context.mounted) {
+                FToaster.show(context, message: 'Link copied');
+              }
+            },
+            onLongPress: () {
+              // TODO: right-click context menu (copy URL / file path / bytes / etc.)
+            },
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Thumbnail or placeholder
+                thumbnailAbsPath != null
+                    ? Image.file(File(thumbnailAbsPath), fit: BoxFit.cover)
+                    : Container(
+                        color: colors.muted,
+                        child: reaction.status == ReactionStatus.queued ||
+                                reaction.status == ReactionStatus.downloading
+                            ? Icon(FLucideIcons.clock, size: 28, color: colors.mutedForeground)
+                            : reaction.status == ReactionStatus.failed
+                                ? Icon(FLucideIcons.alertCircle,
+                                    size: 28, color: colors.destructive)
+                                : Icon(FLucideIcons.image,
+                                    size: 28, color: colors.mutedForeground),
+                      ),
+                // Usage count badge
+                if (reaction.usageCount > 0)
+                  Positioned(
+                    right: 4,
+                    bottom: 4,
+                    child: FBadge(
+                      variant: FBadgeVariant.secondary,
+                      child: Text('${reaction.usageCount}'),
+                    ),
                   ),
-            Positioned(
-              right: 4,
-              bottom: 4,
-              child: FBadge(variant: FBadgeVariant.secondary, child: Text('${item.usageCount}')),
+                // Ingest progress bar overlay
+                if (progress != null && progress < 1.0)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 3,
+                      backgroundColor: colors.muted,
+                      valueColor: AlwaysStoppedAnimation(colors.primary),
+                    ),
+                  ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
