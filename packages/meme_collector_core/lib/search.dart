@@ -237,7 +237,7 @@ class VectorIndex {
 
 /// Simple inverted index for exact word matching.
 ///
-/// Builds a Map<word, Set<reactionId>> from title + tags + ocrText.
+/// Builds a `Map<word, Set<reactionId>>` from title + tags + ocrText.
 /// Search returns reactions with at least one matching word, ranked by
 /// match count (more matches = higher rank).
 ///

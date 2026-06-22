@@ -383,13 +383,13 @@ class Metadata {
   }
 
   /// Empty state for first launch.
-  factory Metadata.empty() => Metadata(
+  factory Metadata.empty() => const Metadata(
         activeModels: {
           'text_embedding': 'potion-base-32M',
           'image_embedding': 'clip-vit-b32-int8-v1',
           'ocr': 'pp-ocr-v5',
         },
-        reactions: const [],
+        reactions: [],
       );
 
   /// Find a reaction by ID, or null.

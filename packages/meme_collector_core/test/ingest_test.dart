@@ -7,6 +7,8 @@
 /// tests are skipped by default (require network); the direct URL tests
 /// cover the classification logic.
 
+library;
+
 import 'package:meme_collector_core/meme_collector_core.dart';
 import 'package:test/test.dart';
 

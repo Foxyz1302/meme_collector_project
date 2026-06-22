@@ -36,8 +36,8 @@ Future<void> atomicRename(String from, String to) {
 }
 
 // Windows FFI bits — keep them private to this file.
-const int _MOVEFILE_REPLACE_EXISTING = 0x00000001;
-const int _MOVEFILE_WRITE_THROUGH = 0x00000008;
+const int _moveFileReplaceExisting = 0x00000001;
+const int _moveFileWriteThrough = 0x00000008;
 
 typedef _MoveFileExWNative = Int32 Function(
     Pointer<Utf16> lpExistingFileName,
@@ -59,7 +59,7 @@ Future<void> _atomicRenameWindows(String from, String to) async {
     final toPtr = to.toNativeUtf16();
     try {
       return moveFileEx(fromPtr, toPtr,
-          _MOVEFILE_REPLACE_EXISTING | _MOVEFILE_WRITE_THROUGH);
+          _moveFileReplaceExisting | _moveFileWriteThrough);
     } finally {
       calloc.free(fromPtr);
       calloc.free(toPtr);

@@ -7,6 +7,8 @@
 /// needing ONNX or real model embeddings. Uses synthetic vectors that are
 /// constructed to have known similarity relationships.
 
+library;
+
 import 'dart:typed_data';
 
 import 'package:meme_collector_core/meme_collector_core.dart';

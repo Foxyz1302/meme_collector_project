@@ -16,7 +16,8 @@
 ///
 /// Core is pure Dart (no Flutter deps). The app provides concrete ONNX
 /// implementations of the inference interfaces via InferenceFactory.
-library meme_collector_core;
+
+library;
 
 export 'models.dart';
 export 'storage.dart';
