@@ -419,31 +419,32 @@ class Coordinator {
     _metadata = _metadata.copyWith(reactions: [..._metadata.reactions, reaction]);
     _scheduleSave();
 
-    // Start the ingest pipeline immediately (runs async in background)
+    // Start the ingest pipeline immediately (runs async in background).
+    // Don't await — the caller needs to return quickly so the UI can refresh.
     _runIngest(reaction);
 
-    // Compute initial text embedding async (doesn't block the return)
+    // Compute initial text embedding async (non-blocking — fire and forget)
     if (reaction.embeddableText.isNotEmpty) {
-      try {
-        final textVec = await _queryEmbedder.embed(reaction.embeddableText);
-        final vecPath = _storage.textEmbeddingPath(
-            reaction.id, 'clip-vit-b32-fp16', config.activeTextModelVersion);
-        await writeVectorFile(vecPath, textVec);
+      () async {
+        try {
+          final textVec = await _queryEmbedder.embed(reaction.embeddableText);
+          final vecPath = _storage.textEmbeddingPath(
+              reaction.id, 'clip-vit-b32-fp16', config.activeTextModelVersion);
+          await writeVectorFile(vecPath, textVec);
 
-        // Update reaction with embedding path
-        final updated = reaction.copyWith(
-          textEmbeddingPath: vecPath
-              .substring(_storage.rootPath.length + 1)
-              .replaceAll('\\', '/'),
-          textModelVersion: config.activeTextModelVersion,
-        );
-        _updateReaction(updated);
+          final updated = reaction.copyWith(
+            textEmbeddingPath: vecPath
+                .substring(_storage.rootPath.length + 1)
+                .replaceAll('\\', '/'),
+            textModelVersion: config.activeTextModelVersion,
+          );
+          _updateReaction(updated);
 
-        // Tell search isolate about the new vector
-        _searchIso?.send(VectorIndexAddText(reaction.id, textVec));
-      } catch (_) {
-        // Embedding failed — reaction still queued for ingest
-      }
+          _searchIso?.send(VectorIndexAddText(reaction.id, textVec));
+        } catch (_) {
+          // Embedding failed — reaction still queued for ingest
+        }
+      }();
     }
 
     return reaction;
