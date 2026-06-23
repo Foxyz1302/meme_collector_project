@@ -9,6 +9,7 @@ import 'package:meme_collector_core/meme_collector_core.dart';
 import 'package:path/path.dart' as p;
 
 import 'inference_isolate.dart';
+import 'ppocr_engine.dart';
 
 /// Factory that creates isolate-backed embedder implementations.
 ///
@@ -46,6 +47,10 @@ class AppInferenceFactory implements InferenceFactory {
 
   @override
   OcrEngine? createOcrEngine() {
-    return null; // TODO: implement PpocrEngine
+    return PpocrEngine(
+      detModelPath: p.join(modelsDir, 'ppocr_det.onnx'),
+      recModelPath: p.join(modelsDir, 'ppocr_rec.onnx'),
+      dictPath: p.join(modelsDir, 'ppocr_dict.txt'),
+    );
   }
 }

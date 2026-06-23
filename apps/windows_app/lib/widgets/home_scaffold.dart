@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 
+import 'package:meme_collector_core/meme_collector_core.dart';
+
 import 'gif_grid.dart';
 import 'app_searchbar.dart';
 import 'app_sidebar.dart';
@@ -59,8 +61,24 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   Future<void> _pasteFromClipboard() async {
     final clipData = await Clipboard.getData('text/plain');
     final url = clipData?.text?.trim();
-    if (url != null && url.isNotEmpty) {
-      await addReaction(url);
+    if (url == null || url.isEmpty) return;
+
+    // Validate URL
+    final validation = UrlValidator.validate(url);
+    if (!validation.isValid) {
+      showFToast(
+        context: context,
+        title: Text(validation.reason ?? 'Invalid URL'),
+      );
+      return;
     }
+
+    // Show toast that we're adding
+    showFToast(
+      context: context,
+      title: const Text('Adding reaction…'),
+    );
+
+    await addReaction(url);
   }
 }

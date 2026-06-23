@@ -1028,8 +1028,37 @@ class IngestPipeline {
 
     // Download to .tmp first, rename on success (crash-safe)
     final tmpPath = '$downloadPath.tmp';
-    await dio.download(reaction.url, tmpPath);
-    await File(tmpPath).rename(downloadPath);
+    try {
+      await dio.download(
+        reaction.url,
+        tmpPath,
+        options: Options(
+          followRedirects: true,
+          maxRedirects: 5,
+          receiveTimeout: const Duration(seconds: 30),
+          headers: {
+            'User-Agent': 'ReactionRoulette/0.1',
+          },
+        ),
+      );
+    } catch (e) {
+      // Clean up temp file on failure
+      try {
+        await File(tmpPath).delete();
+      } catch (_) {}
+      rethrow;
+    }
+
+    // Verify the downloaded file isn't empty
+    final downloadedFile = File(tmpPath);
+    final downloadedSize = await downloadedFile.length();
+    if (downloadedSize == 0) {
+      await downloadedFile.delete();
+      throw Exception('Downloaded file is empty (0 bytes)');
+    }
+
+    await downloadedFile.rename(downloadPath);
+    print('[Ingest] ${reaction.id}: downloaded $downloadedSize bytes to $downloadPath');
 
     // Probe for media info
     MediaInfo mediaInfo;
