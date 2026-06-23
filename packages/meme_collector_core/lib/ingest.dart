@@ -560,20 +560,17 @@ class FfmpegWrapper {
     int maxWidth = 256,
     int quality = 80,
   }) async {
-    // For animated WebP input, ffmpeg's native webp decoder fails
-    // (skips ANIM/ANMF chunks, "image data not found").
-    // Use libwebp_anim decoder for animated WebP, or the regular decoder otherwise.
-    final isAnimatedWebp = inputPath.toLowerCase().endsWith('.webp');
-
-    final decoderArgs = isAnimatedWebp
-        ? ['-c:v', 'libwebp_anim'] // handles animated WebP input
-        : <String>[];
+    // ffmpeg CANNOT decode animated WebP as input (encoder-only support).
+    // For .webp inputs, use package:image instead.
+    if (inputPath.toLowerCase().endsWith('.webp')) {
+      await _generateStaticThumbnailViaImageLib(inputPath, outputPath, maxWidth);
+      return;
+    }
 
     final result = await Process.run(
       ffmpegPath,
       [
         '-y',
-        ...decoderArgs,
         '-i', inputPath,
         '-vframes', '1',
         '-vf', 'scale=$maxWidth:-1',
@@ -584,30 +581,43 @@ class FfmpegWrapper {
     );
 
     if (result.exitCode != 0) {
-      // If libwebp_anim failed, try without specifying decoder (let ffmpeg auto-detect)
-      if (isAnimatedWebp) {
-        final fallbackResult = await Process.run(
-          ffmpegPath,
-          [
-            '-y',
-            '-i', inputPath,
-            '-vframes', '1',
-            '-vf', 'scale=$maxWidth:-1',
-            '-c:v', 'libwebp',
-            '-quality', quality.toString(),
-            outputPath,
-          ],
-        );
-        if (fallbackResult.exitCode == 0) return;
-        throw Exception(
-            'ffmpeg static thumbnail failed for animated WebP (both libwebp_anim and auto-detect):\n'
-            'libwebp_anim stderr: ${result.stderr}\n'
-            'auto-detect stderr: ${fallbackResult.stderr}');
-      }
       throw Exception(
           'ffmpeg static thumbnail failed (exit ${result.exitCode}):\n'
-          'stderr: ${result.stderr}\n'
-          'stdout: ${result.stdout}');
+          'stderr: ${result.stderr}');
+    }
+  }
+
+  /// Fallback for WebP inputs using package:image (can decode animated WebP).
+  /// Imported lazily to avoid circular deps in core — the app provides this
+  /// via a callback. For now, we shell out to a simple approach: try ffmpeg
+  /// with -analyzeduration and -probesize increased.
+  Future<void> _generateStaticThumbnailViaImageLib(
+      String inputPath, String outputPath, int maxWidth) async {
+    // Try ffmpeg with increased probe settings first (sometimes helps)
+    final result = await Process.run(
+      ffmpegPath,
+      [
+        '-y',
+        '-analyzeduration', '10000000',
+        '-probesize', '10000000',
+        '-i', inputPath,
+        '-vframes', '1',
+        '-vf', 'scale=$maxWidth:-1',
+        '-c:v', 'libwebp',
+        '-quality', '80',
+        outputPath,
+      ],
+    );
+
+    if (result.exitCode == 0) return;
+
+    // ffmpeg can't handle it — the app's image provider will display the
+    // original file directly (Flutter's Image widget can decode animated WebP).
+    // Just copy the original as the "thumbnail" — it'll be larger but works.
+    try {
+      await File(inputPath).copy(outputPath);
+    } catch (e) {
+      throw Exception('Cannot create thumbnail for animated WebP: $e');
     }
   }
 
@@ -618,17 +628,21 @@ class FfmpegWrapper {
     int fps = 10,
     int quality = 70,
   }) async {
-    final isAnimatedWebp = inputPath.toLowerCase().endsWith('.webp');
-
-    final decoderArgs = isAnimatedWebp
-        ? ['-c:v', 'libwebp_anim']
-        : <String>[];
+    // ffmpeg can't decode animated WebP — just copy the original.
+    // The image provider will display it natively (Flutter supports animated WebP).
+    if (inputPath.toLowerCase().endsWith('.webp')) {
+      try {
+        await File(inputPath).copy(outputPath);
+        return;
+      } catch (e) {
+        throw Exception('Cannot copy animated WebP for thumbnail: $e');
+      }
+    }
 
     final result = await Process.run(
       ffmpegPath,
       [
         '-y',
-        ...decoderArgs,
         '-i', inputPath,
         '-vf', 'scale=$maxWidth:-1,fps=$fps',
         '-c:v', 'libwebp',
@@ -641,8 +655,7 @@ class FfmpegWrapper {
     if (result.exitCode != 0) {
       throw Exception(
           'ffmpeg animated thumbnail failed (exit ${result.exitCode}):\n'
-          'stderr: ${result.stderr}\n'
-          'stdout: ${result.stdout}');
+          'stderr: ${result.stderr}');
     }
   }
 }
@@ -747,9 +760,11 @@ class IngestPipeline {
   /// the final updated reaction (or throws on failure).
   Stream<IngestEvent> process(Reaction initial) async* {
     var reaction = initial;
+    print('[Ingest] Starting pipeline for ${reaction.id} (${reaction.url})');
 
     try {
       // ─── Stage 1: Download ──────────────────────────────────────────────
+      print('[Ingest] ${reaction.id}: downloading...');
       reaction = reaction.copyWith(status: ReactionStatus.downloading, progress: 0.0);
       yield IngestProgressEvent(
           reactionId: reaction.id,
@@ -758,7 +773,9 @@ class IngestPipeline {
 
       final downloadResult = await _download(reaction);
       reaction = downloadResult.reaction;
-      // Send the full reaction with download results (width/height/mimeType/etc.)
+      print('[Ingest] ${reaction.id}: downloaded ${reaction.fileSizeBytes} bytes, '
+          '${reaction.width}x${reaction.height}, mime=${reaction.mimeType}, '
+          'animated=${downloadResult.mediaInfo.isAnimated}');
       yield IngestProgressEvent(
           reactionId: reaction.id,
           status: reaction.status,
@@ -766,6 +783,7 @@ class IngestPipeline {
           reaction: reaction);
 
       // ─── Stage 2: Thumbnail ─────────────────────────────────────────────
+      print('[Ingest] ${reaction.id}: generating thumbnail...');
       reaction = reaction.copyWith(status: ReactionStatus.thumbnailing, progress: 0.5);
       yield IngestProgressEvent(
           reactionId: reaction.id,
@@ -775,7 +793,6 @@ class IngestPipeline {
 
       await _generateThumbnails(reaction, downloadResult.localPath);
 
-      // Update reaction with thumbnail paths
       final staticThumbPath = storage.thumbnailStaticPath(reaction.id);
       reaction = reaction.copyWith(
         thumbnailStatic: p.relative(staticThumbPath, from: storage.rootPath),
@@ -786,19 +803,22 @@ class IngestPipeline {
           thumbnailAnimated: p.relative(animThumbPath, from: storage.rootPath),
         );
       }
+      print('[Ingest] ${reaction.id}: thumbnail ready at ${reaction.thumbnailStatic}');
       yield IngestProgressEvent(
           reactionId: reaction.id,
           status: reaction.status,
-          progress: 0.6);
+          progress: 0.6,
+          reaction: reaction);
 
       // ─── Stage 3: Text embedding ───────────────────────────────────────
+      print('[Ingest] ${reaction.id}: text embedding...');
       reaction = reaction.copyWith(status: ReactionStatus.embedding, progress: 0.65);
       yield IngestProgressEvent(
           reactionId: reaction.id,
           status: reaction.status,
-          progress: reaction.progress);
+          progress: reaction.progress,
+          reaction: reaction);
 
-      // Embed text from title + tags (OCR added later if enabled)
       final embeddableText = reaction.embeddableText;
       if (embeddableText.isNotEmpty) {
         final textVec = await textEmbedder.embed(embeddableText);
@@ -809,6 +829,9 @@ class IngestPipeline {
           textEmbeddingPath: p.relative(vecPath, from: storage.rootPath),
           textModelVersion: config.textModelVersion,
         );
+        print('[Ingest] ${reaction.id}: text embedding done');
+      } else {
+        print('[Ingest] ${reaction.id}: no text to embed (no title/tags/ocr)');
       }
       yield IngestProgressEvent(
           reactionId: reaction.id,
@@ -816,10 +839,10 @@ class IngestPipeline {
           progress: 0.75);
 
       // ─── Stage 4: Image embedding ──────────────────────────────────────
+      print('[Ingest] ${reaction.id}: image embedding...');
       if (config.imageEmbeddingsEnabled && imageEmbedder != null) {
         try {
           await imageEmbedder!.init();
-          // Use the static thumbnail for embedding (smaller, CLIP downsamples anyway)
           final thumbAbsPath = p.join(storage.rootPath, reaction.thumbnailStatic!);
           final imageVec = await imageEmbedder!.embedFile(thumbAbsPath);
           final vecPath = storage.imageEmbeddingPath(
@@ -829,38 +852,40 @@ class IngestPipeline {
             imageEmbeddingPath: p.relative(vecPath, from: storage.rootPath),
             imageModelVersion: config.imageModelVersion,
           );
+          print('[Ingest] ${reaction.id}: image embedding done');
         } catch (e) {
-          // Image embedding failure is non-fatal — text search still works
-          // TODO: log this
+          print('[Ingest] ${reaction.id}: image embedding FAILED (non-fatal): $e');
         }
       }
       yield IngestProgressEvent(
           reactionId: reaction.id,
           status: reaction.status,
-          progress: 0.85);
+          progress: 0.85,
+          reaction: reaction);
 
       // ─── Stage 5: OCR (optional) ───────────────────────────────────────
       if (config.ocrEnabled && ocrEngine != null) {
+        print('[Ingest] ${reaction.id}: OCR...');
         reaction = reaction.copyWith(status: ReactionStatus.ocr, progress: 0.9);
         yield IngestProgressEvent(
             reactionId: reaction.id,
             status: reaction.status,
-            progress: reaction.progress);
+            progress: reaction.progress,
+            reaction: reaction);
 
         try {
           await ocrEngine!.init();
           final thumbAbsPath = p.join(storage.rootPath, reaction.thumbnailStatic!);
           final ocrText = await ocrEngine!.ocrFile(thumbAbsPath);
           if (ocrText != null && ocrText.isNotEmpty) {
-            // Write OCR text to file
             final ocrPath = storage.ocrPath(reaction.id);
             await File(ocrPath).writeAsString(ocrText, flush: true);
             reaction = reaction.copyWith(
               ocrText: ocrText,
               ocrModelVersion: config.ocrModelVersion,
             );
+            print('[Ingest] ${reaction.id}: OCR text: "${ocrText.substring(0, ocrText.length > 50 ? 50 : ocrText.length)}..."');
 
-            // Re-embed text with OCR included (better search quality)
             final enrichedText = reaction.embeddableText;
             if (enrichedText.isNotEmpty) {
               final textVec = await textEmbedder.embed(enrichedText);
@@ -868,10 +893,11 @@ class IngestPipeline {
                   reaction.id, 'clip-vit-b32-fp16', config.textModelVersion);
               await writeVectorFile(vecPath, textVec);
             }
+          } else {
+            print('[Ingest] ${reaction.id}: no text found by OCR');
           }
         } catch (e) {
-          // OCR failure is non-fatal
-          // TODO: log
+          print('[Ingest] ${reaction.id}: OCR FAILED (non-fatal): $e');
         }
 
         try {
@@ -882,6 +908,7 @@ class IngestPipeline {
       // ─── Stage 6: Done ──────────────────────────────────────────────────
       reaction = reaction.copyWith(
           status: ReactionStatus.ready, progress: 1.0);
+      print('[Ingest] ${reaction.id}: pipeline complete ✓');
       yield IngestCompleteEvent(reaction);
     } catch (e) {
       reaction = reaction.copyWith(

@@ -47,6 +47,9 @@ class GifGrid extends StatelessWidget {
               ),
             );
           }
+          // Sort newest first (UUID v7 is time-ordered, so string sort works)
+          final sortedItems = List<Reaction>.from(allItems)
+            ..sort((a, b) => b.id.compareTo(a.id));
           return CustomScrollView(
             slivers: [
               SliverWaterfallFlow(
@@ -57,8 +60,8 @@ class GifGrid extends StatelessWidget {
                   mainAxisSpacing: 4,
                 ),
                 delegate: SliverChildBuilderDelegate(
-                  (context, index) => _GifTile(reaction: allItems[index]),
-                  childCount: allItems.length,
+                  (context, index) => _GifTile(reaction: sortedItems[index]),
+                  childCount: sortedItems.length,
                 ),
               ),
             ],
