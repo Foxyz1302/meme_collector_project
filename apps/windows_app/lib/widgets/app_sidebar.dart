@@ -15,9 +15,7 @@ class AppSidebar extends StatelessWidget {
     final typography = context.theme.typography;
 
     // Count of currently ingesting reactions (for showing progress)
-    final ingestingCount = ingestStatus.value.values
-        .where((s) => s.isNotEmpty && !s.startsWith('Failed'))
-        .length;
+    final ingestingCount = ingestStatus.value.values.where((s) => s.isNotEmpty && !s.startsWith('Failed')).length;
 
     return FSidebar(
       header: Padding(
@@ -78,35 +76,23 @@ class AppSidebar extends StatelessWidget {
                       Row(
                         spacing: 8,
                         children: [
-                          Icon(
-                            ingesting > 0 ? FLucideIcons.loader : FLucideIcons.alertTriangle,
-                            size: 16,
-                            color: colors.primary,
-                          ),
+                          Icon(ingesting > 0 ? FLucideIcons.loader : FLucideIcons.alertTriangle, size: 16, color: colors.primary),
                           Expanded(
                             child: Text(
-                              ingesting > 0
-                                  ? 'Embedding $ingesting reactions…'
-                                  : '$incomplete reactions need embedding',
-                              style: typography.body.xs.copyWith(
-                                color: colors.foreground,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              ingesting > 0 ? 'Embedding $ingesting reactions…' : '$incomplete reactions need embedding',
+                              style: typography.body.xs.copyWith(color: colors.foreground, fontWeight: FontWeight.w600),
                             ),
                           ),
                         ],
                       ),
                       if (incomplete > 0 && ingesting == 0)
                         FButton(
-                          size: FButtonSize.xs,
+                          size: .xs,
                           mainAxisSize: MainAxisSize.max,
                           onPress: () {
                             final count = processIncomplete();
                             if (count > 0 && context.mounted) {
-                              showFToast(
-                                context: context,
-                                title: Text('Processing $count reactions…'),
-                              );
+                              showFToast(context: context, title: Text('Processing $count reactions…'));
                             }
                           },
                           child: const Text('Process now'),
@@ -189,10 +175,7 @@ class AppSidebar extends StatelessWidget {
               onPress: () {
                 final count = resetAll();
                 if (count > 0 && context.mounted) {
-                  showFToast(
-                    context: context,
-                    title: Text('Re-embedding $count reactions…'),
-                  );
+                  showFToast(context: context, title: Text('Re-embedding $count reactions…'));
                 }
               },
             ),
@@ -202,12 +185,7 @@ class AppSidebar extends StatelessWidget {
               onPress: () {
                 final count = scanIncomplete();
                 if (context.mounted) {
-                  showFToast(
-                    context: context,
-                    title: Text(count > 0
-                        ? '$count reactions need embedding'
-                        : 'All reactions are complete'),
-                  );
+                  showFToast(context: context, title: Text(count > 0 ? '$count reactions need embedding' : 'All reactions are complete'));
                 }
               },
             ),
