@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:meme_collector_core/worker.dart';
+import 'package:signals_flutter/signals_flutter.dart';
 import '../state/signals.dart';
 
 class AppSidebar extends StatelessWidget {
@@ -12,6 +13,11 @@ class AppSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.theme.colors;
     final typography = context.theme.typography;
+
+    // Count of currently ingesting reactions (for showing progress)
+    final ingestingCount = ingestStatus.value.values
+        .where((s) => s.isNotEmpty && !s.startsWith('Failed'))
+        .length;
 
     return FSidebar(
       header: Padding(
@@ -38,7 +44,7 @@ class AppSidebar extends StatelessWidget {
                         style: typography.body.sm.copyWith(color: colors.foreground),
                       ),
                       Text(
-                        '0 items',
+                        '${allReactions.value.length} items',
                         overflow: TextOverflow.ellipsis,
                         style: typography.body.xs.copyWith(color: colors.mutedForeground),
                       ),
@@ -51,6 +57,69 @@ class AppSidebar extends StatelessWidget {
         ),
       ),
       children: [
+        // ─── Incomplete embeddings notice ───────────────────────────────
+        // Shows when reactions are missing embeddings. Stays visible until
+        // all reactions are fully embedded. Has a "Process" button.
+        SignalBuilder(
+          builder: (context) {
+            final incomplete = incompleteCount.value;
+            final ingesting = ingestingCount;
+            if (incomplete == 0 && ingesting == 0) return const SizedBox.shrink();
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: FCard.raw(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 8,
+                    children: [
+                      Row(
+                        spacing: 8,
+                        children: [
+                          Icon(
+                            ingesting > 0 ? FLucideIcons.loader : FLucideIcons.alertTriangle,
+                            size: 16,
+                            color: colors.primary,
+                          ),
+                          Expanded(
+                            child: Text(
+                              ingesting > 0
+                                  ? 'Embedding $ingesting reactions…'
+                                  : '$incomplete reactions need embedding',
+                              style: typography.body.xs.copyWith(
+                                color: colors.foreground,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (incomplete > 0 && ingesting == 0)
+                        FButton(
+                          size: FButtonSize.xs,
+                          mainAxisSize: MainAxisSize.max,
+                          onPress: () {
+                            final count = processIncomplete();
+                            if (count > 0 && context.mounted) {
+                              showFToast(
+                                context: context,
+                                title: Text('Processing $count reactions…'),
+                              );
+                            }
+                          },
+                          child: const Text('Process now'),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+
+        // ─── Library ────────────────────────────────────────────────────
         FSidebarGroup(
           label: const Text('Library'),
           children: [
@@ -80,6 +149,8 @@ class AppSidebar extends StatelessWidget {
             ),
           ],
         ),
+
+        // ─── Add ────────────────────────────────────────────────────────
         FSidebarGroup(
           label: const Text('Add'),
           action: const Icon(FLucideIcons.plus),
@@ -95,8 +166,7 @@ class AppSidebar extends StatelessWidget {
                 if (result == null) {
                   return;
                 }
-                coordinator?.addReaction(url: (result).trim());
-                // TODO: clipboard -> parse tenor/giphy -> download
+                await addReaction(result.trim());
               },
             ),
             FSidebarItem(
@@ -104,6 +174,41 @@ class AppSidebar extends StatelessWidget {
               label: const Text('Import file'),
               onPress: () {
                 // TODO: file_picker -> copy into library dir
+              },
+            ),
+          ],
+        ),
+
+        // ─── Maintenance ────────────────────────────────────────────────
+        FSidebarGroup(
+          label: const Text('Maintenance'),
+          children: [
+            FSidebarItem(
+              icon: const Icon(FLucideIcons.refreshCw),
+              label: const Text('Re-embed all'),
+              onPress: () {
+                final count = resetAll();
+                if (count > 0 && context.mounted) {
+                  showFToast(
+                    context: context,
+                    title: Text('Re-embedding $count reactions…'),
+                  );
+                }
+              },
+            ),
+            FSidebarItem(
+              icon: const Icon(FLucideIcons.scanLine),
+              label: const Text('Scan for incomplete'),
+              onPress: () {
+                final count = scanIncomplete();
+                if (context.mounted) {
+                  showFToast(
+                    context: context,
+                    title: Text(count > 0
+                        ? '$count reactions need embedding'
+                        : 'All reactions are complete'),
+                  );
+                }
               },
             ),
           ],

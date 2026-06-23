@@ -41,6 +41,10 @@ final ingestStatus = signal<Map<String, String>>({});
 /// Map of reactionId → (width, height). Used for masonry layout.
 final reactionDimensions = signal<Map<String, (int, int)>>({});
 
+/// Count of reactions with missing embeddings. Updated after init and
+/// after each ingest completes. When > 0, sidebar shows a notice.
+final incompleteCount = signal<int>(0);
+
 /// Human-readable status text for a reaction's ingest pipeline state.
 String _statusText(ReactionStatus status) {
   switch (status) {
@@ -76,20 +80,22 @@ void wireCoordinatorToSignals() {
     ingestStatus.value = status;
   });
 
-  // When ingest completes, refresh allReactions + clear status for that id
+  // When ingest completes, refresh allReactions + clear status + rescan incomplete
   c.completeStream.listen((event) {
     final status = Map<String, String>.from(ingestStatus.value);
     status.remove(event.reaction.id);
     ingestStatus.value = status;
     allReactions.value = c.allReactions;
+    incompleteCount.value = c.findIncompleteReactions().length;
   });
 
-  // When ingest fails, show error status
+  // When ingest fails, show error status + rescan incomplete
   c.failedStream.listen((msg) {
     final status = Map<String, String>.from(ingestStatus.value);
     status[msg.reactionId] = 'Failed: ${msg.error}';
     ingestStatus.value = status;
     allReactions.value = c.allReactions;
+    incompleteCount.value = c.findIncompleteReactions().length;
   });
 }
 
@@ -153,11 +159,12 @@ Future<void> incrementUsage(String id) async {
   refreshReactions();
 }
 
-/// Scan for reactions with missing embeddings. Returns count of incomplete.
+/// Scan for reactions with missing embeddings. Returns count and updates signal.
 int scanIncomplete() {
   final c = coordinator;
   if (c == null) return 0;
   final incomplete = c.findIncompleteReactions();
+  incompleteCount.value = incomplete.length;
   return incomplete.length;
 }
 

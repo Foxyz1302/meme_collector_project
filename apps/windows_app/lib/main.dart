@@ -68,6 +68,9 @@ Future<void> _initCoordinator() async {
     refreshReactions();
     await refreshHotlist();
 
+    // Scan for incomplete embeddings (after init, once metadata is loaded)
+    scanIncomplete();
+
     // Mark as initialized — triggers UI rebuild from loading screen to main UI
     isInitialized.value = true;
   } catch (e, st) {
