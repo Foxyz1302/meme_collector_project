@@ -108,9 +108,34 @@ class GifGrid extends StatelessWidget {
   }
 }
 
-class _GifTile extends StatelessWidget {
+class _GifTile extends StatefulWidget {
   final Reaction reaction;
   const _GifTile({required this.reaction});
+
+  @override
+  State<_GifTile> createState() => _GifTileState();
+}
+
+class _GifTileState extends State<_GifTile> {
+  late final FPopoverController _menuController;
+
+  @override
+  void initState() {
+    super.initState();
+    _menuController = FPopoverController(vsync: this, shown: false);
+  }
+
+  @override
+  void dispose() {
+    _menuController.dispose();
+    super.dispose();
+  }
+
+  void _hideMenu() {
+    _menuController.hide();
+  }
+
+  Reaction get reaction => widget.reaction;
 
   @override
   Widget build(BuildContext context) {
@@ -127,6 +152,9 @@ class _GifTile extends StatelessWidget {
         reaction.localFile != null ? c.resolvePath(reaction.localFile!) : null;
 
     return FContextMenu(
+      control: FContextMenuControl.managed(
+        controller: _menuController,
+      ),
       menu: [
         FContextMenuEntry.group(
           children: [
@@ -134,8 +162,9 @@ class _GifTile extends StatelessWidget {
               prefix: const Icon(FLucideIcons.link, size: 16),
               title: const Text('Copy URL'),
               onPress: () async {
+                _hideMenu();
                 await Clipboard.setData(ClipboardData(text: reaction.url));
-                if (context.mounted) {
+                if (mounted) {
                   showFToast(context: context, title: const Text('Link copied'));
                 }
               },
@@ -145,19 +174,13 @@ class _GifTile extends StatelessWidget {
                 prefix: const Icon(FLucideIcons.fileCopy, size: 16),
                 title: const Text('Copy file path'),
                 onPress: () async {
+                  _hideMenu();
                   await Clipboard.setData(ClipboardData(text: localFileAbs));
-                  if (context.mounted) {
+                  if (mounted) {
                     showFToast(context: context, title: const Text('Path copied'));
                   }
                 },
               ),
-            FContextMenuEntry.item(
-              prefix: const Icon(FLucideIcons.externalLink, size: 16),
-              title: const Text('Open in browser'),
-              onPress: () {
-                // TODO: url_launcher
-              },
-            ),
           ],
         ),
         FContextMenuEntry.group(
@@ -166,8 +189,9 @@ class _GifTile extends StatelessWidget {
               prefix: const Icon(FLucideIcons.refreshCw, size: 16),
               title: const Text('Re-embed'),
               onPress: () async {
+                _hideMenu();
                 await c.reEmbedImage(reaction.id);
-                if (context.mounted) {
+                if (mounted) {
                   showFToast(context: context, title: const Text('Re-embedded'));
                 }
               },
@@ -176,9 +200,10 @@ class _GifTile extends StatelessWidget {
               prefix: const Icon(FLucideIcons.imageRefresh, size: 16),
               title: const Text('Re-generate thumbnail'),
               onPress: () async {
+                _hideMenu();
                 await c.regenerateThumbnails(reaction.id);
                 refreshReactions();
-                if (context.mounted) {
+                if (mounted) {
                   showFToast(context: context, title: const Text('Thumbnail regenerated'));
                 }
               },
@@ -188,6 +213,7 @@ class _GifTile extends StatelessWidget {
                 prefix: const Icon(FLucideIcons.pin, size: 16),
                 title: const Text('Pin locally'),
                 onPress: () async {
+                  _hideMenu();
                   await c.pinReaction(reaction.id);
                   refreshReactions();
                 },
@@ -200,9 +226,10 @@ class _GifTile extends StatelessWidget {
               prefix: const Icon(FLucideIcons.trash2, size: 16),
               title: const Text('Delete'),
               onPress: () async {
+                _hideMenu();
                 await c.deleteReaction(reaction.id);
                 refreshReactions();
-                if (context.mounted) {
+                if (mounted) {
                   showFToast(context: context, title: const Text('Deleted'));
                 }
               },
