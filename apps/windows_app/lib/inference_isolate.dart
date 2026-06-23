@@ -47,6 +47,8 @@ class InferenceIsolateManager {
   Stream<dynamic>? _broadcastStream;
 
   final _pendingRequests = <Completer<Float32List>>[];
+  bool _isProcessing = false;
+  final _requestQueue = <_QueuedRequest>[];
 
   /// Spawn the isolate + initialize ONNX sessions.
   Future<void> spawn(InferenceIsolateConfig config) async {
@@ -72,6 +74,49 @@ class InferenceIsolateManager {
     _broadcastStream!.listen(_onMessage);
   }
 
+  /// Embed text via the isolate. Requests are queued — the isolate processes
+  /// them one at a time (ONNX Runtime doesn't support parallel inference
+  /// in a single session).
+  Future<Float32List> embedText(String text) {
+    final completer = Completer<Float32List>();
+    _enqueue(_QueuedRequest(
+      type: _RequestType.embedText,
+      data: text,
+      completer: completer,
+    ));
+    return completer.future;
+  }
+
+  /// Embed image file via the isolate. Same queuing as embedText.
+  Future<Float32List> embedImage(String imagePath) {
+    final completer = Completer<Float32List>();
+    _enqueue(_QueuedRequest(
+      type: _RequestType.embedImage,
+      data: imagePath,
+      completer: completer,
+    ));
+    return completer.future;
+  }
+
+  void _enqueue(_QueuedRequest request) {
+    _requestQueue.add(request);
+    _processNext();
+  }
+
+  void _processNext() {
+    if (_isProcessing || _requestQueue.isEmpty || _sendPort == null) return;
+    _isProcessing = true;
+    final request = _requestQueue.removeAt(0);
+    _pendingRequests.add(request.completer);
+
+    switch (request.type) {
+      case _RequestType.embedText:
+        _sendPort!.send(_EmbedTextRequest(request.data as String));
+      case _RequestType.embedImage:
+        _sendPort!.send(_EmbedImageRequest(request.data as String));
+    }
+  }
+
   void _onMessage(dynamic msg) {
     if (msg is _EmbedResponse) {
       if (_pendingRequests.isNotEmpty) {
@@ -82,22 +127,10 @@ class InferenceIsolateManager {
         _pendingRequests.removeAt(0).completeError(msg.error);
       }
     }
-  }
 
-  /// Embed text via the isolate.
-  Future<Float32List> embedText(String text) {
-    final completer = Completer<Float32List>();
-    _pendingRequests.add(completer);
-    _sendPort!.send(_EmbedTextRequest(text));
-    return completer.future;
-  }
-
-  /// Embed image file via the isolate.
-  Future<Float32List> embedImage(String imagePath) {
-    final completer = Completer<Float32List>();
-    _pendingRequests.add(completer);
-    _sendPort!.send(_EmbedImageRequest(imagePath));
-    return completer.future;
+    // Process next queued request
+    _isProcessing = false;
+    _processNext();
   }
 
   Future<void> dispose() async {
@@ -126,6 +159,21 @@ class _EmbedImageRequest {
 }
 
 class _DisposeRequest {}
+
+/// Request queue types for sequential isolate processing.
+enum _RequestType { embedText, embedImage }
+
+class _QueuedRequest {
+  final _RequestType type;
+  final Object data;
+  final Completer<Float32List> completer;
+
+  _QueuedRequest({
+    required this.type,
+    required this.data,
+    required this.completer,
+  });
+}
 
 class _EmbedResponse {
   final Float32List vector;

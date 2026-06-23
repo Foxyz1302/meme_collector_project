@@ -287,6 +287,19 @@ class UrlNormalizer {
       );
     }
 
+    // ─── Twitter/X ────────────────────────────────────────────────────────
+    // Matches: x.com/{user}/status/{id}, twitter.com/{user}/status/{id},
+    //          fixupx.com/{user}/status/{id}, fixvx.com/{user}/status/{id},
+    //          vxtwitter.com/{user}/status/{id}
+    // Uses the fxtwitter API to resolve to direct media URLs.
+    final twitterMatch = RegExp(
+      r'^https?://(?:www\.)?(?:fixup|fixv|vx)?(?:x|twitter)\.com/\w+/status/(\d+)',
+    ).firstMatch(url);
+    if (twitterMatch != null) {
+      return await _normalizeTwitterUrl(url, twitterMatch.group(1)!) ??
+          _fallback(url, SourcePlatform.unknown);
+    }
+
     // ─── Direct media URLs ────────────────────────────────────────────────
     // Anything ending in a known media extension
     if (RegExp(r'\.(gif|mp4|webp|png|jpg|jpeg|webm)(\?|$)', caseSensitive: false)
@@ -372,6 +385,52 @@ class UrlNormalizer {
         pageUrl: pageUrl,
         platform: SourcePlatform.giphy,
         normalizedId: giphyId != null ? 'giphy:$giphyId' : 'giphy:${_sha256(pageUrl)}',
+        autoPin: false,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Resolve a Twitter/X URL via the fxtwitter API.
+  ///
+  /// Calls https://api.fxtwitter.com/status/{id}/en which returns JSON
+  /// with media URLs (videos as MP4, GIFs as direct media URLs).
+  Future<NormalizedUrl?> _normalizeTwitterUrl(
+      String pageUrl, String statusId) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        'https://api.fxtwitter.com/status/$statusId/en',
+      );
+      final tweet = response.data?['tweet'] as Map<String, dynamic>?;
+      if (tweet == null) return null;
+
+      final media = tweet['media'] as Map<String, dynamic>?;
+      if (media == null) return null;
+
+      final photos = media['photos'] as List<dynamic>?;
+      final videos = media['videos'] as List<dynamic>?;
+
+      String? directUrl;
+      if (videos != null && videos.isNotEmpty) {
+        // Prefer video — usually GIFs converted to MP4 on Twitter
+        final video = videos[0] as Map<String, dynamic>;
+        directUrl = video['url'] as String?;
+      } else if (photos != null && photos.isNotEmpty) {
+        final photo = photos[0] as Map<String, dynamic>;
+        directUrl = photo['url'] as String?;
+      }
+
+      if (directUrl == null) return null;
+
+      // Also grab the tweet text for potential use as title
+      final text = tweet['text'] as String?;
+
+      return NormalizedUrl(
+        directUrl: directUrl,
+        pageUrl: pageUrl,
+        platform: SourcePlatform.direct,
+        normalizedId: 'twitter:$statusId',
         autoPin: false,
       );
     } catch (_) {
