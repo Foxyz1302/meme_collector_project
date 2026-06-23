@@ -49,13 +49,10 @@ class PpocrEngine implements OcrEngine {
 
   /// Blank token index for CTC decoding (last index in the dict)
 
-  PpocrEngine({
-    required String detModelPath,
-    required String recModelPath,
-    required String dictPath,
-  })  : _detModelPath = detModelPath,
-        _recModelPath = recModelPath,
-        _dictPath = dictPath;
+  PpocrEngine({required String detModelPath, required String recModelPath, required String dictPath})
+    : _detModelPath = detModelPath,
+      _recModelPath = recModelPath,
+      _dictPath = dictPath;
 
   @override
   bool get isLoaded => _initialized;
@@ -83,8 +80,10 @@ class PpocrEngine implements OcrEngine {
     _blankIndex = 0;
 
     _initialized = true;
-    print('[OCR] Initialized: det=${_detSession!.inputNames}, '
-        'rec=${_recSession!.inputNames}, dict=${_dict!.length} chars');
+    print(
+      '[OCR] Initialized: det=${_detSession!.inputNames}, '
+      'rec=${_recSession!.inputNames}, dict=${_dict!.length} chars',
+    );
   }
 
   @override
@@ -143,10 +142,7 @@ class PpocrEngine implements OcrEngine {
     final input = _imageToNchw(resized, _detSize, _detSize, normalize: true);
 
     // Run inference
-    final inputTensor = OrtValueTensor.createTensorWithDataList(
-      input,
-      [1, 3, _detSize, _detSize],
-    );
+    final inputTensor = OrtValueTensor.createTensorWithDataList(input, [1, 3, _detSize, _detSize]);
     final runOptions = OrtRunOptions();
     final outputs = await _detSession!.run(runOptions, {'x': inputTensor});
     inputTensor.release();
@@ -169,12 +165,7 @@ class PpocrEngine implements OcrEngine {
     final scaleX = image.width / _detSize;
     final scaleY = image.height / _detSize;
 
-    return boxes.map((box) => _TextBox(
-      box.x1 * scaleX,
-      box.y1 * scaleY,
-      box.x2 * scaleX,
-      box.y2 * scaleY,
-    )).toList();
+    return boxes.map((box) => _TextBox(box.x1 * scaleX, box.y1 * scaleY, box.x2 * scaleX, box.y2 * scaleY)).toList();
   }
 
   /// Resize image to fit within detSize×detSize, padding with zeros.
@@ -185,8 +176,7 @@ class PpocrEngine implements OcrEngine {
     final newW = (w * ratio).round();
     final newH = (h * ratio).round();
 
-    final resized = img.copyResize(image, width: newW, height: newH,
-        interpolation: img.Interpolation.linear);
+    final resized = img.copyResize(image, width: newW, height: newH, interpolation: img.Interpolation.linear);
 
     // Create padded image (black background)
     final padded = img.Image(width: _detSize, height: _detSize);
@@ -237,10 +227,7 @@ class PpocrEngine implements OcrEngine {
           }
         }
         if (maxX > minX) {
-          boxes.add(_TextBox(
-            minX.toDouble(), startY.toDouble(),
-            maxX.toDouble(), (y - 1).toDouble(),
-          ));
+          boxes.add(_TextBox(minX.toDouble(), startY.toDouble(), maxX.toDouble(), (y - 1).toDouble()));
         }
         inLine = false;
       }
@@ -253,6 +240,7 @@ class PpocrEngine implements OcrEngine {
 
   /// Run the recognition model on a cropped text region.
   Future<String> _recognize(img.Image crop) async {
+<<<<<<< HEAD
     // PP-OCR recognition preprocessing (from PaddleOCR resize_norm_img):
     // 1. Resize: height=48, width=maintain aspect ratio (cap at 320)
     // 2. Normalize: /255, then (x - 0.5) / 0.5 → [-1, 1]
@@ -278,12 +266,16 @@ class PpocrEngine implements OcrEngine {
     
     // Convert to NCHW float32, normalize to [-1, 1]
     final input = _imageToNchw(padded, _recWidth, _recHeight, toNegOne: true);
+=======
+    // Resize to 48×320 (rec model input size)
+    final resized = img.copyResize(crop, width: _recWidth, height: _recHeight, interpolation: img.Interpolation.linear);
+
+    // Convert to NCHW float32, normalize to [-1, 1] for PP-OCR recognition
+    final input = _imageToNchw(resized, _recWidth, _recHeight, toNegOne: true);
+>>>>>>> 7a998ea5b0768c623751b75f4401f78f7e6e6dec
 
     // Run inference
-    final inputTensor = OrtValueTensor.createTensorWithDataList(
-      input,
-      [1, 3, _recHeight, _recWidth],
-    );
+    final inputTensor = OrtValueTensor.createTensorWithDataList(input, [1, 3, _recHeight, _recWidth]);
     final runOptions = OrtRunOptions();
     final outputs = await _recSession!.run(runOptions, {'x': inputTensor});
     inputTensor.release();
@@ -353,8 +345,7 @@ class PpocrEngine implements OcrEngine {
   /// Convert image to NCHW Float32List for ONNX input.
   /// For detection: normalize to [0, 1] (divide by 255)
   /// For recognition: normalize to [-1, 1] ((x/255 - 0.5) / 0.5)
-  Float32List _imageToNchw(img.Image image, int width, int height,
-      {bool normalize = false, bool toNegOne = false}) {
+  Float32List _imageToNchw(img.Image image, int width, int height, {bool normalize = false, bool toNegOne = false}) {
     final pixelValues = Float32List(3 * height * width);
     for (var y = 0; y < height; y++) {
       for (var x = 0; x < width; x++) {
@@ -362,23 +353,23 @@ class PpocrEngine implements OcrEngine {
         double r, g, b;
         if (toNegOne) {
           // PP-OCR recognition: normalize to [-1, 1]
-          r = (pixel.rNormalized - 0.5) / 0.5;
-          g = (pixel.gNormalized - 0.5) / 0.5;
-          b = (pixel.bNormalized - 0.5) / 0.5;
+          r = (pixel.rNormalized.toDouble() - 0.5) / 0.5;
+          g = (pixel.gNormalized.toDouble() - 0.5) / 0.5;
+          b = (pixel.bNormalized.toDouble() - 0.5) / 0.5;
         } else if (normalize) {
           // Detection: normalize to [0, 1]
-          r = pixel.rNormalized;
-          g = pixel.gNormalized;
-          b = pixel.bNormalized;
+          r = pixel.rNormalized.toDouble();
+          g = pixel.gNormalized.toDouble();
+          b = pixel.bNormalized.toDouble();
         } else {
           r = pixel.r / 255.0;
           g = pixel.g / 255.0;
           b = pixel.b / 255.0;
         }
         final idx = y * width + x;
-        pixelValues[0 * height * width + idx] = r.toDouble();
-        pixelValues[1 * height * width + idx] = g.toDouble();
-        pixelValues[2 * height * width + idx] = b.toDouble();
+        pixelValues[0 * height * width + idx] = r;
+        pixelValues[1 * height * width + idx] = g;
+        pixelValues[2 * height * width + idx] = b;
       }
     }
     return pixelValues;
@@ -396,6 +387,7 @@ class PpocrEngine implements OcrEngine {
         result.add(v);
       }
     }
+
     recurse(value);
     return result;
   }

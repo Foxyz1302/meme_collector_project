@@ -59,25 +59,27 @@ Future<void> _initCoordinator() async {
     );
 
     // ─── Initialize Coordinator ────────────────────────────────────────────
-    coordinator = Coordinator(config: CoordinatorConfig(
-      storagePath: storagePath,
-      animatedPreviewsEnabled: true,
-      ocrEnabled: true,
-      ocrIsolateCallback: (imagePath) async {
-        // Run OCR in a background isolate — creates its own ONNX sessions
-        return await Isolate.run(() async {
-          final engine = PpocrEngine(
-            detModelPath: p.join(modelsDir, 'ppocr_det.onnx'),
-            recModelPath: p.join(modelsDir, 'ppocr_rec.onnx'),
-            dictPath: p.join(modelsDir, 'ppocr_dict.txt'),
-          );
-          await engine.init();
-          final result = await engine.ocrFile(imagePath);
-          await engine.dispose();
-          return result;
-        });
-      },
-    ));
+    coordinator = Coordinator(
+      config: CoordinatorConfig(
+        storagePath: storagePath,
+        animatedPreviewsEnabled: true,
+        ocrEnabled: true,
+        ocrIsolateCallback: (imagePath) async {
+          // Run OCR in a background isolate — creates its own ONNX sessions
+          return await Isolate.run(() async {
+            final engine = PpocrEngine(
+              detModelPath: p.join(modelsDir, 'ppocr_det.onnx'),
+              recModelPath: p.join(modelsDir, 'ppocr_rec.onnx'),
+              dictPath: p.join(modelsDir, 'ppocr_dict.txt'),
+            );
+            await engine.init();
+            final result = await engine.ocrFile(imagePath);
+            await engine.dispose();
+            return result;
+          });
+        },
+      ),
+    );
 
     await coordinator!.init(AppInferenceFactory(modelsDir: modelsDir, isolateManager: isolateManager));
 
