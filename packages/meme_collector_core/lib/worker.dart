@@ -738,6 +738,21 @@ class Coordinator {
   void _onSearchResponse(WorkerMessage msg) {
     if (msg is SearchResponse) {
       _debugPrint('Search: received ${msg.results.length} results');
+      for (var i = 0; i < msg.results.length && i < 5; i++) {
+        final r = msg.results[i];
+        final reaction = _metadata.byId(r.reactionId);
+        final ocrPreview = reaction?.ocrText != null
+            ? reaction!.ocrText!.length > 30
+                ? reaction.ocrText!.substring(0, 30)
+                : reaction.ocrText
+            : 'none';
+        _debugPrint('Search: #${i + 1} ${r.reactionId} '
+            'score=${r.score.toStringAsFixed(4)} '
+            'rrf=${r.rrfScore.toStringAsFixed(4)} '
+            'boost=${r.usageBoost.toStringAsFixed(4)} '
+            'usage=${reaction?.usageCount ?? 0} '
+            'ocr="$ocrPreview"');
+      }
       if (_pendingSearches.isNotEmpty) {
         _pendingSearches.removeAt(0).complete(msg.results);
       } else if (_pendingHotlists.isNotEmpty) {
