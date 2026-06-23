@@ -299,12 +299,18 @@ class Coordinator {
     () async {
       await for (final event in _ingestPipeline!.process(reaction)) {
         switch (event) {
-          case IngestProgressEvent(:final reactionId, :final status, :final progress):
-            final r = _metadata.byId(reactionId);
-            if (r != null) {
-              _updateReaction(r.copyWith(status: status, progress: progress));
-              _scheduleSave();
+          case IngestProgressEvent(:final reactionId, :final status, :final progress, :final reaction):
+            // Use the full reaction from the event if available (has width/height/etc.)
+            // otherwise just update status + progress on the existing reaction
+            if (reaction != null) {
+              _updateReaction(reaction.copyWith(status: status, progress: progress));
+            } else {
+              final r = _metadata.byId(reactionId);
+              if (r != null) {
+                _updateReaction(r.copyWith(status: status, progress: progress));
+              }
             }
+            _scheduleSave();
             _progressController.add(IngestProgressMsg(
               reactionId: reactionId,
               status: status,
@@ -321,16 +327,21 @@ class Coordinator {
               _loadAndSendVector(reaction.id, reaction.imageEmbeddingPath!, isImage: true);
             }
             _completeController.add(IngestCompleteMsg(reaction));
-          case IngestFailedEvent(:final reactionId, :final error):
+          case IngestFailedEvent(:final reactionId, :final error, :final reaction):
             _debugPrint('Ingest FAILED for $reactionId: $error');
-            final r = _metadata.byId(reactionId);
-            if (r != null) {
-              _updateReaction(r.copyWith(
-                status: ReactionStatus.failed,
-                errorMessage: error,
-              ));
-              _scheduleSave();
+            // Use the full reaction from the event (has width/height from download)
+            if (reaction != null) {
+              _updateReaction(reaction);
+            } else {
+              final r = _metadata.byId(reactionId);
+              if (r != null) {
+                _updateReaction(r.copyWith(
+                  status: ReactionStatus.failed,
+                  errorMessage: error,
+                ));
+              }
             }
+            _scheduleSave();
             _failedController.add(IngestFailedMsg(reactionId: reactionId, error: error));
         }
       }

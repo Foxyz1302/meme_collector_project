@@ -560,57 +560,24 @@ class FfmpegWrapper {
     int maxWidth = 256,
     int quality = 80,
   }) async {
-    // Try libwebp first (better compression), fall back to webp muxer
-    // (always available, slightly larger output)
-    final args = [
-      '-y', // overwrite output
-      '-i', inputPath,
-      '-vframes', '1',
-      '-vf', 'scale=$maxWidth:-1',
-    ];
-
-    // Try libwebp encoder first
-    var result = await Process.run(ffmpegPath, [
-      ...args,
-      '-c:v', 'libwebp',
-      '-quality', quality.toString(),
-      outputPath,
-    ]);
-
-    if (result.exitCode != 0) {
-      // Fall back to webp muxer (built into all ffmpeg builds)
-      final outputPathPng = outputPath.replaceAll('.webp', '.png');
-      result = await Process.run(ffmpegPath, [
-        ...args,
-        '-c:v', 'png',
-        outputPathPng,
-      ]);
-
-      if (result.exitCode != 0) {
-        throw Exception(
-            'ffmpeg thumbnail generation failed (both libwebp and png fallback):\n'
-            'libwebp stderr: see above\n'
-            'png fallback stderr: ${result.stderr}');
-      }
-
-      // Convert PNG to WebP using ffmpeg's webp muxer
-      final convertResult = await Process.run(ffmpegPath, [
-        '-y',
-        '-i', outputPathPng,
-        '-c:v', 'webp',
+    final result = await Process.run(
+      ffmpegPath,
+      [
+        '-y', // overwrite output
+        '-i', inputPath,
+        '-vframes', '1',
+        '-vf', 'scale=$maxWidth:-1',
+        '-c:v', 'libwebp',
         '-quality', quality.toString(),
         outputPath,
-      ]);
+      ],
+    );
 
-      // Clean up temp PNG
-      try {
-        await File(outputPathPng).delete();
-      } catch (_) {}
-
-      if (convertResult.exitCode != 0) {
-        throw Exception(
-            'ffmpeg PNG→WebP conversion failed: ${convertResult.stderr}');
-      }
+    if (result.exitCode != 0) {
+      throw Exception(
+          'ffmpeg static thumbnail failed (exit ${result.exitCode}):\n'
+          'stderr: ${result.stderr}\n'
+          'stdout: ${result.stdout}');
     }
   }
 
@@ -621,60 +588,24 @@ class FfmpegWrapper {
     int fps = 10,
     int quality = 70,
   }) async {
-    final args = [
-      '-y',
-      '-i', inputPath,
-      '-vf', 'scale=$maxWidth:-1,fps=$fps',
-    ];
-
-    // Try libwebp first
-    var result = await Process.run(ffmpegPath, [
-      ...args,
-      '-c:v', 'libwebp',
-      '-loop', '0',
-      '-quality', quality.toString(),
-      outputPath,
-    ]);
-
-    if (result.exitCode != 0) {
-      // Fall back to animated GIF (always supported, larger file)
-      final gifPath = outputPath.replaceAll('.webp', '.gif');
-      result = await Process.run(ffmpegPath, [
-        ...args,
-        '-c:v', 'gif',
-        gifPath,
-      ]);
-
-      if (result.exitCode != 0) {
-        throw Exception(
-            'ffmpeg animated thumbnail failed (both libwebp and gif fallback):\n'
-            'gif fallback stderr: ${result.stderr}');
-      }
-
-      // Convert GIF to animated WebP
-      final convertResult = await Process.run(ffmpegPath, [
+    final result = await Process.run(
+      ffmpegPath,
+      [
         '-y',
-        '-i', gifPath,
-        '-c:v', 'webp',
+        '-i', inputPath,
+        '-vf', 'scale=$maxWidth:-1,fps=$fps',
+        '-c:v', 'libwebp',
         '-loop', '0',
         '-quality', quality.toString(),
         outputPath,
-      ]);
+      ],
+    );
 
-      try {
-        await File(gifPath).delete();
-      } catch (_) {}
-
-      if (convertResult.exitCode != 0) {
-        // If WebP conversion fails, just use the GIF directly
-        // (rename .gif to the output path — Flutter supports animated GIF)
-        try {
-          await File(gifPath).rename(outputPath);
-        } catch (_) {
-          throw Exception(
-              'ffmpeg animated thumbnail: all methods failed');
-        }
-      }
+    if (result.exitCode != 0) {
+      throw Exception(
+          'ffmpeg animated thumbnail failed (exit ${result.exitCode}):\n'
+          'stderr: ${result.stderr}\n'
+          'stdout: ${result.stdout}');
     }
   }
 }
@@ -689,11 +620,13 @@ class IngestProgressEvent extends IngestEvent {
   final String reactionId;
   final ReactionStatus status;
   final double progress; // 0.0 – 1.0
+  final Reaction? reaction; // full updated reaction (includes width/height/etc from download)
 
   IngestProgressEvent({
     required this.reactionId,
     required this.status,
     required this.progress,
+    this.reaction,
   });
 }
 
@@ -706,8 +639,13 @@ class IngestCompleteEvent extends IngestEvent {
 class IngestFailedEvent extends IngestEvent {
   final String reactionId;
   final String error;
+  final Reaction? reaction; // the reaction with whatever data was collected before failure
 
-  IngestFailedEvent({required this.reactionId, required this.error});
+  IngestFailedEvent({
+    required this.reactionId,
+    required this.error,
+    this.reaction,
+  });
 }
 
 /// Configuration for the ingest pipeline.
@@ -783,17 +721,20 @@ class IngestPipeline {
 
       final downloadResult = await _download(reaction);
       reaction = downloadResult.reaction;
+      // Send the full reaction with download results (width/height/mimeType/etc.)
       yield IngestProgressEvent(
           reactionId: reaction.id,
           status: reaction.status,
-          progress: 0.4);
+          progress: 0.4,
+          reaction: reaction);
 
       // ─── Stage 2: Thumbnail ─────────────────────────────────────────────
       reaction = reaction.copyWith(status: ReactionStatus.thumbnailing, progress: 0.5);
       yield IngestProgressEvent(
           reactionId: reaction.id,
           status: reaction.status,
-          progress: reaction.progress);
+          progress: reaction.progress,
+          reaction: reaction);
 
       await _generateThumbnails(reaction, downloadResult.localPath);
 
@@ -909,7 +850,10 @@ class IngestPipeline {
       reaction = reaction.copyWith(
           status: ReactionStatus.failed,
           errorMessage: e.toString());
-      yield IngestFailedEvent(reactionId: reaction.id, error: e.toString());
+      yield IngestFailedEvent(
+          reactionId: reaction.id,
+          error: e.toString(),
+          reaction: reaction);
     }
   }
 
