@@ -239,12 +239,13 @@ class PpocrEngine implements OcrEngine {
   // ─── Recognition ───────────────────────────────────────────────────────
 
   /// Run the recognition model on a cropped text region.
+  /// 
+  /// PaddleOCR preprocessing (from resize_norm_img in rec_img_aug.py):
+  /// 1. Resize: height=48, width=maintain aspect ratio (cap at 320)
+  /// 2. Convert to CHW, BGR channel order (OpenCV default)
+  /// 3. Normalize: /255, then (x - 0.5) / 0.5 → [-1, 1]
+  /// 4. Pad with zeros (= 0.0 in normalized space = gray) to full 320 width
   Future<String> _recognize(img.Image crop) async {
-    // PP-OCR recognition preprocessing (from PaddleOCR resize_norm_img):
-    // 1. Resize: height=48, width=maintain aspect ratio (cap at 320)
-    // 2. Normalize: /255, then (x - 0.5) / 0.5 → [-1, 1]
-    // 3. Pad: zeros for remaining width up to 320
-    
     final cropH = crop.height;
     final cropW = crop.width;
     
@@ -252,19 +253,32 @@ class PpocrEngine implements OcrEngine {
     final ratio = cropW / cropH.toDouble();
     var resizedW = (ratio * _recHeight).ceil();
     if (resizedW > _recWidth) resizedW = _recWidth;
+    if (resizedW < 1) resizedW = 1;
     
     // Resize: height=48, width=resizedW (maintains aspect ratio)
     final resized = img.copyResize(crop,
         width: resizedW, height: _recHeight,
         interpolation: img.Interpolation.linear);
     
-    // Create padded image (48×320, black background)
-    final padded = img.Image(width: _recWidth, height: _recHeight);
-    // Copy resized into left side of padded
-    img.compositeImage(padded, resized, dstX: 0, dstY: 0);
+    // Build NCHW Float32List directly — BGR order, normalized to [-1,1],
+    // padded with 0.0 (gray in normalized space) to full 320 width.
+    // PaddleOCR uses cv2 (BGR), so we swap R and B channels.
+    final input = Float32List(3 * _recHeight * _recWidth); // all 0.0 = gray padding
     
-    // Convert to NCHW float32, normalize to [-1, 1]
-    final input = _imageToNchw(padded, _recWidth, _recHeight, toNegOne: true);
+    for (var y = 0; y < _recHeight; y++) {
+      for (var x = 0; x < resizedW; x++) {
+        final pixel = resized.getPixel(x, y);
+        // BGR order (not RGB) — PaddleOCR/OpenCV convention
+        final b = (pixel.bNormalized - 0.5) / 0.5;
+        final g = (pixel.gNormalized - 0.5) / 0.5;
+        final r = (pixel.rNormalized - 0.5) / 0.5;
+        final idx = y * _recWidth + x;
+        input[0 * _recHeight * _recWidth + idx] = b.toDouble(); // Channel 0 = B
+        input[1 * _recHeight * _recWidth + idx] = g.toDouble(); // Channel 1 = G
+        input[2 * _recHeight * _recWidth + idx] = r.toDouble(); // Channel 2 = R
+      }
+    }
+    // Remaining pixels (resizedW..320) stay at 0.0 = gray padding
 
     // Run inference
     final inputTensor = OrtValueTensor.createTensorWithDataList(input, [1, 3, _recHeight, _recWidth]);
