@@ -173,7 +173,7 @@ class _GifTile extends StatelessWidget {
                       thumbnailStaticPath: thumbnailStaticAbs,
                       thumbnailAnimatedPath: thumbnailAnimatedAbs,
                       localFilePath: localFileAbs,
-                      animatedPreviewsEnabled: false, // TODO: from settings
+                      animatedPreviewsEnabled: coordinator?.config.animatedPreviewsEnabled ?? false,
                       onDimensions: (w, h) {
                         // Capture dimensions for masonry layout + persist to metadata
                         final current = reactionDimensions.value[reaction.id];
@@ -222,6 +222,10 @@ class _GifTile extends StatelessWidget {
             SignalBuilder(
               builder: (context) {
                 final status = ingestStatus.value[reaction.id];
+                // Debug: print when status changes for this tile
+                if (status != null && status.isNotEmpty) {
+                  print('[UI] ${reaction.id}: status overlay = "$status"');
+                }
                 if (status == null || status.isEmpty) {
                   return const SizedBox.shrink();
                 }

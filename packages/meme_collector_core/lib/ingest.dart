@@ -820,7 +820,19 @@ class IngestPipeline {
       reaction = reaction.copyWith(
         thumbnailStatic: p.relative(staticThumbPath, from: storage.rootPath),
       );
-      if (config.animatedPreviewsEnabled && downloadResult.mediaInfo.isAnimated) {
+      // Check if the source is inherently animated (regardless of ffprobe detection,
+      // which fails on animated WebP and sometimes GIFs)
+      final isLikelyAnimated = downloadResult.mediaInfo.isAnimated ||
+          reaction.mimeType == 'image/gif' ||
+          reaction.mimeType == 'image/webp' ||
+          reaction.mimeType == 'video/mp4' ||
+          reaction.mimeType == 'video/webm' ||
+          reaction.url.toLowerCase().endsWith('.gif') ||
+          reaction.url.toLowerCase().endsWith('.webp') ||
+          reaction.url.toLowerCase().endsWith('.mp4') ||
+          reaction.url.toLowerCase().endsWith('.webm');
+
+      if (config.animatedPreviewsEnabled && isLikelyAnimated) {
         final animThumbPath = storage.thumbnailAnimatedPath(reaction.id);
         reaction = reaction.copyWith(
           thumbnailAnimated: p.relative(animThumbPath, from: storage.rootPath),
