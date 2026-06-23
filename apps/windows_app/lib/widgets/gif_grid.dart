@@ -8,6 +8,7 @@ import 'package:waterfall_flow/waterfall_flow.dart';
 
 import 'package:meme_collector_core/meme_collector_core.dart';
 
+import '../reaction_image_provider.dart';
 import '../state/signals.dart';
 
 class GifGrid extends StatelessWidget {
@@ -18,14 +19,11 @@ class GifGrid extends StatelessWidget {
     return SignalBuilder(
       builder: (context) {
         final query = searchQuery.value;
-        // When searching: show search results (List<SearchResult>)
-        // When not searching: show allReactions (List<Reaction>) so newly
-        // added reactions appear immediately without waiting for hotlist refresh
-        final searchItems = query.isEmpty ? <SearchResult>[] : searchResults.value;
+        final searchItems =
+            query.isEmpty ? <SearchResult>[] : searchResults.value;
         final allItems = allReactions.value;
 
         if (query.isEmpty) {
-          // Show all reactions, sorted by addedAt desc (newest first)
           if (allItems.isEmpty) {
             return Center(
               child: Column(
@@ -52,67 +50,56 @@ class GifGrid extends StatelessWidget {
           return CustomScrollView(
             slivers: [
               SliverWaterfallFlow(
-                gridDelegate: SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
+                gridDelegate:
+                    SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 300,
                   crossAxisSpacing: 4,
                   mainAxisSpacing: 4,
                 ),
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  return _GifTile(reaction: allItems[index]);
-                }, childCount: allItems.length),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _GifTile(reaction: allItems[index]),
+                  childCount: allItems.length,
+                ),
               ),
-              // SliverWaterfallFlow(
-              //   gridDelegate: const SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
-              //     maxCrossAxisExtent: 200,
-              //     crossAxisSpacing: 4,
-              //     mainAxisSpacing: 4,
-              //   ),
-              //   delegate: SliverChildBuilderDelegate((context, i) {
-              //     return Image(image: NetworkImage(allItems[i].url));
-              //   }, childCount: allItems.length),
-              // ),
             ],
           );
-          // GridView.builder(
-          //   padding: const EdgeInsets.all(8),
-          //   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          //     maxCrossAxisExtent: 180,
-          //     mainAxisSpacing: 8,
-          //     crossAxisSpacing: 8,
-          //     childAspectRatio: 1.0,
-          //   ),
-          //   itemCount: allItems.length,
-          //   itemBuilder: (context, i) => _GifTile(reaction: allItems[i]),
-          // );
         }
 
-        // Search mode — show search results
+        // Search mode
         final items = searchItems;
         if (items.isEmpty) {
           return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               spacing: 8,
-              children: [const Icon(FLucideIcons.searchX, size: 32), Text(isSearching.value ? 'Searching…' : 'No matches')],
+              children: [
+                const Icon(FLucideIcons.searchX, size: 32),
+                Text(isSearching.value ? 'Searching…' : 'No matches'),
+              ],
             ),
           );
         }
 
-        return GridView.builder(
-          padding: const EdgeInsets.all(8),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 180,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 1.0,
-          ),
-          itemCount: items.length,
-          itemBuilder: (context, i) {
-            final result = items[i];
-            final reaction = coordinator?.getReaction(result.reactionId);
-            if (reaction == null) return const SizedBox.shrink();
-            return _GifTile(reaction: reaction);
-          },
+        return CustomScrollView(
+          slivers: [
+            SliverWaterfallFlow(
+              gridDelegate:
+                  SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 300,
+                crossAxisSpacing: 4,
+                mainAxisSpacing: 4,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  final result = items[i];
+                  final reaction = coordinator?.getReaction(result.reactionId);
+                  if (reaction == null) return const SizedBox.shrink();
+                  return _GifTile(reaction: reaction);
+                },
+                childCount: items.length,
+              ),
+            ),
+          ],
         );
       },
     );
@@ -128,71 +115,144 @@ class _GifTile extends StatelessWidget {
     final colors = context.theme.colors;
     final c = coordinator!;
 
-    // Resolve thumbnail path (relative to storage root) to absolute path
-    final thumbnailAbsPath = reaction.thumbnailStatic != null ? c.resolvePath(reaction.thumbnailStatic!) : null;
+    // Resolve file paths (relative → absolute)
+    final thumbnailStaticAbs =
+        reaction.thumbnailStatic != null
+            ? c.resolvePath(reaction.thumbnailStatic!)
+            : null;
+    final thumbnailAnimatedAbs =
+        reaction.thumbnailAnimated != null
+            ? c.resolvePath(reaction.thumbnailAnimated!)
+            : null;
+    final localFileAbs =
+        reaction.localFile != null
+            ? c.resolvePath(reaction.localFile!)
+            : null;
 
-    return SignalBuilder(
-      builder: (context) {
-        final progress = ingestProgress.value[reaction.id];
+    // Aspect ratio from stored dimensions, or default 1:1
+    final dims = reactionDimensions.value[reaction.id];
+    final storedDims = (reaction.width != null && reaction.height != null)
+        ? (reaction.width!, reaction.height!)
+        : null;
+    final effectiveDims = dims ?? storedDims;
+    final aspectRatio = effectiveDims != null
+        ? effectiveDims.$1 / effectiveDims.$2
+        : 1.0;
 
-        return FTappable(
-          onPress: () async {
-            // Copy URL to clipboard (the Discord-like behavior)
-            await Clipboard.setData(ClipboardData(text: reaction.url));
-            await incrementUsage(reaction.id);
-            if (context.mounted) {
-              showFToast(context: context, title: const Text('Link copied'));
-            }
-          },
-          onLongPress: () {
-            // TODO: right-click context menu (copy URL / file path / bytes / etc.)
-          },
-          child: FCard.raw(
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              // fit: StackFit.expand,
-              children: [
-                // Thumbnail or placeholder
-                thumbnailAbsPath != null
-                    ? SizedBox(
-                        width: .infinity,
-                        child: Image.file(File(thumbnailAbsPath), fit: BoxFit.cover),
-                      )
-                    : Container(
-                        height: 200,
-                        width: .infinity,
-                        color: colors.muted,
-                        child: reaction.status == ReactionStatus.queued || reaction.status == ReactionStatus.downloading
-                            ? Icon(FLucideIcons.clock, size: 28, color: colors.mutedForeground)
-                            : reaction.status == ReactionStatus.failed
-                            ? Icon(FLucideIcons.alertCircle, size: 28, color: colors.destructive)
-                            : Icon(FLucideIcons.image, size: 28, color: colors.mutedForeground),
+    return FTappable(
+      onPress: () async {
+        await Clipboard.setData(ClipboardData(text: reaction.url));
+        await incrementUsage(reaction.id);
+        if (context.mounted) {
+          showFToast(context: context, title: const Text('Link copied'));
+        }
+      },
+      onLongPress: () {
+        // TODO: right-click context menu
+      },
+      child: FCard.raw(
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            // Image layer
+            AspectRatio(
+              aspectRatio: aspectRatio,
+              child: Image(
+                image: ReactionImageProvider(
+                  reactionId: reaction.id,
+                  url: reaction.url,
+                  thumbnailStaticPath: thumbnailStaticAbs,
+                  thumbnailAnimatedPath: thumbnailAnimatedAbs,
+                  localFilePath: localFileAbs,
+                  animatedPreviewsEnabled: false, // TODO: from settings
+                  onDimensions: (w, h) {
+                    // Capture dimensions for masonry layout
+                    final current = reactionDimensions.value[reaction.id];
+                    if (current == null) {
+                      final newDims =
+                          Map<String, (int, int)>.from(reactionDimensions.value);
+                      newDims[reaction.id] = (w, h);
+                      reactionDimensions.value = newDims;
+                    }
+                  },
+                ),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stack) => Container(
+                  color: colors.muted,
+                  child: Icon(FLucideIcons.imageOff, size: 28, color: colors.mutedForeground),
+                ),
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    color: colors.muted,
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
                       ),
-                // Usage count badge
-                if (reaction.usageCount > 0)
-                  Positioned(
-                    right: 4,
-                    bottom: 4,
-                    child: FBadge(variant: FBadgeVariant.secondary, child: Text('${reaction.usageCount}')),
-                  ),
-                // Ingest progress bar overlay
-                if (progress != null && progress < 1.0)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 3,
-                      backgroundColor: colors.muted,
-                      valueColor: AlwaysStoppedAnimation(colors.primary),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Status text overlay (shows what ingest is doing)
+            SignalBuilder(
+              builder: (context) {
+                final status = ingestStatus.value[reaction.id];
+                if (status == null || status.isEmpty) return const SizedBox.shrink();
+                return Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.7),
+                        ],
+                      ),
+                    ),
+                    child: Text(
+                      status,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        decoration: null,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-              ],
+                );
+              },
             ),
-          ),
-        );
-      },
+
+            // Usage count badge
+            if (reaction.usageCount > 0)
+              Positioned(
+                right: 4,
+                top: 4,
+                child: FBadge(
+                  variant: FBadgeVariant.secondary,
+                  child: Text('${reaction.usageCount}'),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

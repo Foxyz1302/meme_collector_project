@@ -32,9 +32,34 @@ final allReactions = signal<List<Reaction>>([]);
 /// Currently selected nav item: 'all' | 'recent' | 'tags' | 'sources'
 final selectedNav = signal('all');
 
-/// Live ingest progress: map of reactionId → progress (0.0–1.0).
-/// Updated in real time as the ingest pipeline runs.
-final ingestProgress = signal<Map<String, double>>({});
+/// Live ingest status text per reaction: map of reactionId → status text.
+/// Shows what the pipeline is currently doing (e.g. "Downloading…",
+/// "Generating thumbnail…", "Embedding…") instead of a progress bar.
+final ingestStatus = signal<Map<String, String>>({});
+
+/// Per-reaction dimensions captured during image load (before ingest runs).
+/// Map of reactionId → (width, height). Used for masonry layout.
+final reactionDimensions = signal<Map<String, (int, int)>>({});
+
+/// Human-readable status text for a reaction's ingest pipeline state.
+String _statusText(ReactionStatus status) {
+  switch (status) {
+    case ReactionStatus.queued:
+      return 'Queued…';
+    case ReactionStatus.downloading:
+      return 'Downloading…';
+    case ReactionStatus.thumbnailing:
+      return 'Generating thumbnail…';
+    case ReactionStatus.embedding:
+      return 'Embedding…';
+    case ReactionStatus.ocr:
+      return 'Reading text…';
+    case ReactionStatus.ready:
+      return '';
+    case ReactionStatus.failed:
+      return 'Failed';
+  }
+}
 
 /// Initialize the coordinator and wire its streams to signals.
 ///
@@ -43,26 +68,26 @@ void wireCoordinatorToSignals() {
   final c = coordinator;
   if (c == null) return;
 
-  // Live ingest progress → signal
+  // Live ingest status → signal
   c.progressStream.listen((msg) {
-    final progress = Map<String, double>.from(ingestProgress.value);
-    progress[msg.reactionId] = msg.progress;
-    ingestProgress.value = progress;
+    final status = Map<String, String>.from(ingestStatus.value);
+    status[msg.reactionId] = _statusText(msg.status);
+    ingestStatus.value = status;
   });
 
-  // When ingest completes, refresh allReactions + clear progress for that id
+  // When ingest completes, refresh allReactions + clear status for that id
   c.completeStream.listen((event) {
-    final progress = Map<String, double>.from(ingestProgress.value);
-    progress.remove(event.reaction.id);
-    ingestProgress.value = progress;
+    final status = Map<String, String>.from(ingestStatus.value);
+    status.remove(event.reaction.id);
+    ingestStatus.value = status;
     allReactions.value = c.allReactions;
   });
 
-  // When ingest fails, clear progress for that id
+  // When ingest fails, show error status
   c.failedStream.listen((msg) {
-    final progress = Map<String, double>.from(ingestProgress.value);
-    progress.remove(msg.reactionId);
-    ingestProgress.value = progress;
+    final status = Map<String, String>.from(ingestStatus.value);
+    status[msg.reactionId] = 'Failed: ${msg.error}';
+    ingestStatus.value = status;
     allReactions.value = c.allReactions;
   });
 }
