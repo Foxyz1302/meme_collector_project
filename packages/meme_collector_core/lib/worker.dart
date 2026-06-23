@@ -516,10 +516,23 @@ class Coordinator {
   }
 
   /// Re-embed a reaction's image (re-run CLIP vision on the existing thumbnail).
+  /// Shows progress on the tile via the same ingest status system.
   Future<void> reEmbedImage(String id) async {
     final reaction = _metadata.byId(id);
     if (reaction == null || reaction.thumbnailStatic == null) return;
     if (_ingestImageEmbedder == null) return;
+
+    // Set status to "Embedding…" on the tile
+    _progressController.add(IngestProgressMsg(
+      reactionId: id,
+      status: ReactionStatus.embedding,
+      progress: 0.0,
+    ));
+    _progressController.add(IngestProgressMsg(
+      reactionId: id,
+      status: ReactionStatus.embedding,
+      progress: 0.5,
+    ));
 
     try {
       await _ingestImageEmbedder!.init();
@@ -537,15 +550,30 @@ class Coordinator {
       _updateReaction(updated);
       _scheduleSave();
       _searchIso?.send(VectorIndexAddImage(id, imageVec));
+
+      // Clear status
+      _progressController.add(IngestProgressMsg(
+        reactionId: id,
+        status: ReactionStatus.ready,
+        progress: 1.0,
+      ));
+      _completeController.add(IngestCompleteMsg(updated));
     } catch (e) {
       _debugPrint('Re-embed failed for $id: $e');
+      _failedController.add(IngestFailedMsg(reactionId: id, error: e.toString()));
     }
   }
 
-  /// Re-generate thumbnails for a reaction.
+  /// Re-generate thumbnails for a reaction. Shows progress on the tile.
   Future<void> regenerateThumbnails(String id) async {
     final reaction = _metadata.byId(id);
     if (reaction == null || reaction.localFile == null || _ffmpeg == null) return;
+
+    _progressController.add(IngestProgressMsg(
+      reactionId: id,
+      status: ReactionStatus.thumbnailing,
+      progress: 0.0,
+    ));
 
     final localPath = resolvePath(reaction.localFile!);
     try {
@@ -554,7 +582,6 @@ class Coordinator {
         outputPath: _storage.thumbnailStaticPath(id),
       );
 
-      // Also regenerate animated if enabled
       if (config.animatedPreviewsEnabled) {
         try {
           await _ffmpeg!.generateAnimatedThumbnail(
@@ -564,10 +591,77 @@ class Coordinator {
         } catch (_) {}
       }
 
+      // Evict the old thumbnail from Flutter's image cache
+      // The tile will rebuild with the new thumbnail because the file
+      // on disk has changed (Image.file re-reads on rebuild)
+
+      _progressController.add(IngestProgressMsg(
+        reactionId: id,
+        status: ReactionStatus.ready,
+        progress: 1.0,
+      ));
+      _completeController.add(IngestCompleteMsg(reaction));
       _debugPrint('Thumbnails regenerated for $id');
     } catch (e) {
       _debugPrint('Thumbnail regeneration failed for $id: $e');
+      _failedController.add(IngestFailedMsg(reactionId: id, error: e.toString()));
     }
+  }
+
+  /// Scan all reactions for missing embeddings and return their IDs.
+  /// A reaction is "incomplete" if it's ready but missing image embedding,
+  /// text embedding, or OCR text (when OCR is enabled).
+  List<String> findIncompleteReactions() {
+    final incomplete = <String>[];
+    for (final r in _metadata.reactions) {
+      if (r.status != ReactionStatus.ready) continue;
+      if (r.imageEmbeddingPath == null) {
+        incomplete.add(r.id);
+        continue;
+      }
+      if (config.ocrEnabled && r.ocrText == null && r.ocrModelVersion == null) {
+        incomplete.add(r.id);
+        continue;
+      }
+    }
+    return incomplete;
+  }
+
+  /// Re-process all incomplete reactions (missing embeddings).
+  /// Returns the number of reactions queued for re-processing.
+  int processIncomplete() {
+    final incomplete = findIncompleteReactions();
+    for (final id in incomplete) {
+      final reaction = _metadata.byId(id);
+      if (reaction != null) {
+        _runIngest(reaction);
+      }
+    }
+    return incomplete.length;
+  }
+
+  /// Force re-embed ALL reactions (reset). Queues all ready reactions
+  /// for full re-processing through the ingest pipeline.
+  /// Returns the number of reactions queued.
+  int resetAll() {
+    var count = 0;
+    for (final r in _metadata.reactions) {
+      if (r.status == ReactionStatus.ready) {
+        final reset = r.copyWith(
+          status: ReactionStatus.queued,
+          progress: 0.0,
+          errorMessage: null,
+          imageEmbeddingPath: null,
+          textEmbeddingPath: null,
+          ocrText: null,
+        );
+        _updateReaction(reset);
+        _runIngest(reset);
+        count++;
+      }
+    }
+    if (count > 0) _scheduleSave();
+    return count;
   }
 
   /// Update dimensions for a reaction (from image provider decode).

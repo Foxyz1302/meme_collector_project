@@ -151,6 +151,31 @@ Future<void> incrementUsage(String id) async {
   if (c == null) return;
   await c.incrementUsage(id);
   refreshReactions();
-  // Don't refresh hotlist on every click — it's async and goes through the
-  // search isolate. The grid will update on next search or app restart.
+}
+
+/// Scan for reactions with missing embeddings. Returns count of incomplete.
+int scanIncomplete() {
+  final c = coordinator;
+  if (c == null) return 0;
+  final incomplete = c.findIncompleteReactions();
+  return incomplete.length;
+}
+
+/// Process all incomplete reactions (missing embeddings).
+/// Returns count queued.
+int processIncomplete() {
+  final c = coordinator;
+  if (c == null) return 0;
+  final count = c.processIncomplete();
+  refreshReactions();
+  return count;
+}
+
+/// Force re-embed ALL reactions. Returns count queued.
+int resetAll() {
+  final c = coordinator;
+  if (c == null) return 0;
+  final count = c.resetAll();
+  refreshReactions();
+  return count;
 }
