@@ -240,7 +240,6 @@ class PpocrEngine implements OcrEngine {
 
   /// Run the recognition model on a cropped text region.
   Future<String> _recognize(img.Image crop) async {
-<<<<<<< HEAD
     // PP-OCR recognition preprocessing (from PaddleOCR resize_norm_img):
     // 1. Resize: height=48, width=maintain aspect ratio (cap at 320)
     // 2. Normalize: /255, then (x - 0.5) / 0.5 → [-1, 1]
@@ -266,13 +265,6 @@ class PpocrEngine implements OcrEngine {
     
     // Convert to NCHW float32, normalize to [-1, 1]
     final input = _imageToNchw(padded, _recWidth, _recHeight, toNegOne: true);
-=======
-    // Resize to 48×320 (rec model input size)
-    final resized = img.copyResize(crop, width: _recWidth, height: _recHeight, interpolation: img.Interpolation.linear);
-
-    // Convert to NCHW float32, normalize to [-1, 1] for PP-OCR recognition
-    final input = _imageToNchw(resized, _recWidth, _recHeight, toNegOne: true);
->>>>>>> 7a998ea5b0768c623751b75f4401f78f7e6e6dec
 
     // Run inference
     final inputTensor = OrtValueTensor.createTensorWithDataList(input, [1, 3, _recHeight, _recWidth]);
