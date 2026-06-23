@@ -70,6 +70,7 @@ void wireCoordinatorToSignals() {
 
   // Live ingest status → signal
   c.progressStream.listen((msg) {
+    print('[Signals] progressStream: ${msg.reactionId} → ${_statusText(msg.status)}');
     final status = Map<String, String>.from(ingestStatus.value);
     status[msg.reactionId] = _statusText(msg.status);
     ingestStatus.value = status;
@@ -96,6 +97,7 @@ void wireCoordinatorToSignals() {
 void refreshReactions() {
   final c = coordinator;
   if (c == null) return;
+  print('[Signals] refreshReactions: ${c.allReactions.length} reactions');
   allReactions.value = c.allReactions;
 }
 
