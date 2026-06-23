@@ -560,10 +560,20 @@ class FfmpegWrapper {
     int maxWidth = 256,
     int quality = 80,
   }) async {
+    // For animated WebP input, ffmpeg's native webp decoder fails
+    // (skips ANIM/ANMF chunks, "image data not found").
+    // Use libwebp_anim decoder for animated WebP, or the regular decoder otherwise.
+    final isAnimatedWebp = inputPath.toLowerCase().endsWith('.webp');
+
+    final decoderArgs = isAnimatedWebp
+        ? ['-c:v', 'libwebp_anim'] // handles animated WebP input
+        : <String>[];
+
     final result = await Process.run(
       ffmpegPath,
       [
-        '-y', // overwrite output
+        '-y',
+        ...decoderArgs,
         '-i', inputPath,
         '-vframes', '1',
         '-vf', 'scale=$maxWidth:-1',
@@ -574,6 +584,26 @@ class FfmpegWrapper {
     );
 
     if (result.exitCode != 0) {
+      // If libwebp_anim failed, try without specifying decoder (let ffmpeg auto-detect)
+      if (isAnimatedWebp) {
+        final fallbackResult = await Process.run(
+          ffmpegPath,
+          [
+            '-y',
+            '-i', inputPath,
+            '-vframes', '1',
+            '-vf', 'scale=$maxWidth:-1',
+            '-c:v', 'libwebp',
+            '-quality', quality.toString(),
+            outputPath,
+          ],
+        );
+        if (fallbackResult.exitCode == 0) return;
+        throw Exception(
+            'ffmpeg static thumbnail failed for animated WebP (both libwebp_anim and auto-detect):\n'
+            'libwebp_anim stderr: ${result.stderr}\n'
+            'auto-detect stderr: ${fallbackResult.stderr}');
+      }
       throw Exception(
           'ffmpeg static thumbnail failed (exit ${result.exitCode}):\n'
           'stderr: ${result.stderr}\n'
@@ -588,10 +618,17 @@ class FfmpegWrapper {
     int fps = 10,
     int quality = 70,
   }) async {
+    final isAnimatedWebp = inputPath.toLowerCase().endsWith('.webp');
+
+    final decoderArgs = isAnimatedWebp
+        ? ['-c:v', 'libwebp_anim']
+        : <String>[];
+
     final result = await Process.run(
       ffmpegPath,
       [
         '-y',
+        ...decoderArgs,
         '-i', inputPath,
         '-vf', 'scale=$maxWidth:-1,fps=$fps',
         '-c:v', 'libwebp',

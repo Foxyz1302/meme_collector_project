@@ -168,7 +168,11 @@ class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
     if (onDimensions == null) return;
     try {
       final frame = await codec.getNextFrame();
-      onDimensions!(frame.image.width, frame.image.height);
+      final w = frame.image.width;
+      final h = frame.image.height;
+      if (w > 0 && h > 0) {
+        onDimensions!(w, h);
+      }
       // Don't dispose the image — MultiFrameImageStreamCompleter needs it
       // for animation. The codec manages its own frame lifecycle.
     } catch (_) {

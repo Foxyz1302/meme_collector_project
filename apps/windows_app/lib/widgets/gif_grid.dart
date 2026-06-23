@@ -150,13 +150,16 @@ class _GifTile extends StatelessWidget {
                 // Read both captured + stored dimensions
                 final capturedDims = reactionDimensions.value[reaction.id];
                 final storedDims =
-                    (reaction.width != null && reaction.height != null)
+                    (reaction.width != null && reaction.height != null && reaction.height! > 0)
                         ? (reaction.width!, reaction.height!)
                         : null;
-                final effectiveDims = capturedDims ?? storedDims;
-                final aspectRatio = effectiveDims != null
+                final effectiveDims = capturedDims;
+                // Use captured dims if available, otherwise stored, otherwise 1:1
+                final aspectRatio = effectiveDims != null && effectiveDims.$2 > 0
                     ? effectiveDims.$1 / effectiveDims.$2
-                    : 1.0;
+                    : (storedDims != null && storedDims.$2 > 0
+                        ? storedDims.$1 / storedDims.$2
+                        : 1.0);
 
                 return AspectRatio(
                   aspectRatio: aspectRatio,
