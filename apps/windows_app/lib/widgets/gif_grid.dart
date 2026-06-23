@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_const_constructors
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,8 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import 'package:waterfall_flow/waterfall_flow.dart';
+import 'package:persistent_header_adaptive/persistent_header_adaptive.dart';
 
 import 'package:meme_collector_core/meme_collector_core.dart';
+import 'package:windows_app/widgets/app_searchbar.dart';
 
 import '../reaction_image_provider.dart';
 import '../state/signals.dart';
@@ -19,79 +23,73 @@ class GifGrid extends StatelessWidget {
     return SignalBuilder(
       builder: (context) {
         final query = searchQuery.value;
-        final searchItems = query.isEmpty ? <SearchResult>[] : searchResults.value;
         final allItems = allReactions.value;
+        final searchItems = query.isEmpty ? <SearchResult>[] : searchResults.value;
 
-        if (query.isEmpty) {
-          if (allItems.isEmpty) {
-            return Center(
+        final bool isSearching = query.isNotEmpty;
+        final items = isSearching ? searchItems : allItems;
+        final bool isEmpty = items.isEmpty;
+
+        // Build the content (waterfall or empty)
+        Widget contentSliver;
+        if (isEmpty) {
+          contentSliver = SliverFillRemaining(
+            child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 spacing: 12,
                 children: [
-                  const Icon(FLucideIcons.imagePlus, size: 40),
-                  const Text('Your library is empty'),
-                  FButton(
-                    mainAxisSize: MainAxisSize.min,
-                    onPress: () async {
-                      final clipData = await Clipboard.getData('text/plain');
-                      final url = clipData?.text?.trim();
-                      if (url != null && url.isNotEmpty) {
-                        await addReaction(url);
-                      }
-                    },
-                    child: const Text('Paste reaction URL'),
-                  ),
+                  Icon(isSearching ? FLucideIcons.searchX : FLucideIcons.imagePlus, size: isSearching ? 32 : 40),
+                  Text(isSearching ? 'No matches' : 'Your library is empty'),
+                  if (!isSearching && allItems.isEmpty)
+                    FButton(
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () async {
+                        final clipData = await Clipboard.getData('text/plain');
+                        final url = clipData?.text?.trim();
+                        if (url != null && url.isNotEmpty) {
+                          await addReaction(url);
+                        }
+                      },
+                      child: const Text('Paste reaction URL'),
+                    ),
                 ],
               ),
-            );
-          }
-          final sortedItems = List<Reaction>.from(allItems)..sort((a, b) => b.id.compareTo(a.id));
-          return CustomScrollView(
+            ),
+          );
+        } else {
+          // Sort for library, keep search order as-is
+          final sortedItems = isSearching ? items : (List<Reaction>.from(allItems)..sort((a, b) => b.id.compareTo(a.id)));
+
+          contentSliver = SliverWaterfallFlow(
+            gridDelegate: const SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 300,
+              crossAxisSpacing: 4,
+              mainAxisSpacing: 4,
+            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final item = sortedItems[index];
+              final reaction = coordinator?.getReaction(isSearching ? (item as SearchResult).reactionId : (item as Reaction).id);
+              if (reaction == null) return const SizedBox.shrink();
+              return _GifTile(reaction: reaction);
+            }, childCount: sortedItems.length),
+          );
+        }
+
+        // One layout to rule them all
+        return Padding(
+          padding: const EdgeInsets.all(4),
+          child: CustomScrollView(
             slivers: [
-              SliverWaterfallFlow(
-                gridDelegate: SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 300,
-                  crossAxisSpacing: 4,
-                  mainAxisSpacing: 4,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => _GifTile(reaction: sortedItems[index]),
-                  childCount: sortedItems.length,
-                ),
+              const AdaptiveHeightSliverPersistentHeader(
+                floating: true,
+                pinned: true,
+                needRepaint: false,
+                child: Column(children: [MySearchBar(), SizedBox(height: 4)]),
               ),
+              contentSliver,
             ],
-          );
-        }
-
-        // Search mode
-        final items = searchItems;
-        if (items.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 8,
-              children: [const Icon(FLucideIcons.searchX, size: 32), Text(isSearching.value ? 'Searching…' : 'No matches')],
-            ),
-          );
-        }
-
-        return CustomScrollView(
-          slivers: [
-            SliverWaterfallFlow(
-              gridDelegate: SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 300,
-                crossAxisSpacing: 4,
-                mainAxisSpacing: 4,
-              ),
-              delegate: SliverChildBuilderDelegate((context, i) {
-                final result = items[i];
-                final reaction = coordinator?.getReaction(result.reactionId);
-                if (reaction == null) return const SizedBox.shrink();
-                return _GifTile(reaction: reaction);
-              }, childCount: items.length),
-            ),
-          ],
+          ),
         );
       },
     );

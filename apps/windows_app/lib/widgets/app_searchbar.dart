@@ -12,99 +12,55 @@ class MySearchBar extends StatefulWidget {
 }
 
 class _MySearchBarState extends State<MySearchBar> {
-  final _controller = TextEditingController();
   Timer? _debounce;
-  EffectCleanup? _externalSync;
-
-  @override
-  void initState() {
-    super.initState();
-    // Push external clears (e.g. Escape key) into the visible text.
-    _externalSync = effect(() {
-      final v = searchQuery.value;
-      if (_controller.text != v) {
-        _controller.value = TextEditingValue(
-          text: v,
-          selection: TextSelection.collapsed(offset: v.length),
-        );
-      }
-    });
-  }
 
   @override
   void dispose() {
     _debounce?.cancel();
-    _externalSync?.call();
-    _controller.dispose();
     super.dispose();
-  }
-
-  void _onChanged(String v) {
-    searchQuery.value = v;
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 150), () {
-      performSearch(v);
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.theme.colors;
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _controller,
-            autofocus: true,
-            style: TextStyle(color: colors.foreground),
-            cursorColor: colors.primary,
-            decoration: InputDecoration(
-              hintText: 'Describe the reaction (e.g. "sarcastic fail")',
-              hintStyle: TextStyle(color: colors.mutedForeground),
-              prefixIcon: Icon(FLucideIcons.search, size: 16, color: colors.mutedForeground),
-              suffixIcon: SignalBuilder(
-                builder: (context) {
-                  final hasText = searchQuery.value.isNotEmpty;
-                  if (!hasText) return const SizedBox.shrink();
-                  return IconButton(
-                    iconSize: 16,
-                    icon: Icon(FLucideIcons.x, color: colors.mutedForeground),
-                    onPressed: () {
-                      _controller.clear();
-                      _onChanged('');
+    return Padding(
+      padding: const EdgeInsets.all(4),
+      child: FCard.raw(
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            spacing: 4,
+            children: [
+              const Icon(FLucideIcons.search, size: 16),
+              Expanded(
+                child: FTextField(
+                  autofocus: true,
+                  // Lifted control: text is driven directly by searchQuery
+                  control: .managed(
+                    initial: TextEditingValue(text: searchQuery.value),
+                    onChange: (value) {
+                      searchQuery.value = value.text;
+                      _debounce?.cancel();
+                      _debounce = Timer(const Duration(milliseconds: 150), () {
+                        performSearch(value.text);
+                      });
                     },
-                  );
+                  ),
+                  // Built‑in clear button (appears when the field is not empty)
+                  clearable: (value) => value.text.isNotEmpty,
+                  hint: 'Describe the reaction (e.g. "sarcastic fail")',
+                ),
+              ),
+              FButton.icon(
+                variant: FButtonVariant.ghost,
+                onPress: () {
+                  // TODO: settings sheet
                 },
+                child: const Icon(FLucideIcons.settings),
               ),
-              filled: true,
-              fillColor: colors.muted,
-              border: OutlineInputBorder(
-                borderRadius: context.theme.style.borderRadius.md,
-                borderSide: BorderSide(color: colors.border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: context.theme.style.borderRadius.md,
-                borderSide: BorderSide(color: colors.border),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: context.theme.style.borderRadius.md,
-                borderSide: BorderSide(color: colors.primary, width: 1.5),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              isDense: true,
-            ),
-            onChanged: _onChanged,
+            ],
           ),
         ),
-        const SizedBox(width: 8),
-        FButton.icon(
-          variant: FButtonVariant.ghost,
-          onPress: () {
-            // TODO: settings sheet
-          },
-          child: const Icon(FLucideIcons.settings),
-        ),
-      ],
+      ),
     );
   }
 }

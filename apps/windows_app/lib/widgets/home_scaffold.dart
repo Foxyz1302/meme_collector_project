@@ -32,8 +32,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent) {
           // Ctrl+V — paste URL from clipboard
-          if ((HardwareKeyboard.instance.isControlPressed ||
-                  HardwareKeyboard.instance.isMetaPressed) &&
+          if ((HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed) &&
               event.logicalKey == LogicalKeyboardKey.keyV) {
             _pasteFromClipboard();
             return KeyEventResult.handled;
@@ -50,21 +49,9 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         return KeyEventResult.ignored;
       },
       child: FScaffold(
-        sidebar: SignalBuilder(
-            builder: (context) => AppSidebar(selected: selectedNav.value)),
-        child: Material(
-          color: Colors.transparent,
-          child: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Column(
-              spacing: 10,
-              children: [
-                MySearchBar(),
-                Expanded(child: GifGrid()),
-              ],
-            ),
-          ),
-        ),
+        childPad: false,
+        sidebar: SignalBuilder(builder: (context) => AppSidebar(selected: selectedNav.value)),
+        child: const Material(color: Colors.transparent, child: GifGrid()),
       ),
     );
   }
