@@ -483,7 +483,9 @@ class FfmpegWrapper {
     final result = await Process.run(
       ffprobePath,
       [
-        '-v', 'quiet',
+        '-v', 'error', // show errors only (not quiet — we want to see failures)
+        '-analyzeduration', '10000000',
+        '-probesize', '10000000',
         '-print_format', 'json',
         '-show_streams',
         '-show_format',
@@ -492,12 +494,27 @@ class FfmpegWrapper {
     );
 
     if (result.exitCode != 0) {
-      // Fallback: just file size
+      print('[ffprobe] FAILED for $inputPath (exit ${result.exitCode}): ${result.stderr}');
       final fileSize = await File(inputPath).length();
       return MediaInfo(fileSizeBytes: fileSize);
     }
 
-    final json = jsonDecode(result.stdout as String) as Map<String, dynamic>;
+    final jsonStr = result.stdout as String;
+    if (jsonStr.trim().isEmpty) {
+      print('[ffprobe] empty output for $inputPath');
+      final fileSize = await File(inputPath).length();
+      return MediaInfo(fileSizeBytes: fileSize);
+    }
+
+    final Map<String, dynamic> json;
+    try {
+      json = jsonDecode(jsonStr) as Map<String, dynamic>;
+    } catch (e) {
+      print('[ffprobe] JSON parse error for $inputPath: $e');
+      final fileSize = await File(inputPath).length();
+      return MediaInfo(fileSizeBytes: fileSize);
+    }
+
     final streams = json['streams'] as List<dynamic>?;
     final format = json['format'] as Map<String, dynamic>?;
 
@@ -513,6 +530,9 @@ class FfmpegWrapper {
       width = (stream['width'] as num?)?.toInt();
       height = (stream['height'] as num?)?.toInt();
       duration = (stream['duration'] as num?)?.toInt();
+
+      print('[ffprobe] $inputPath: codec=$codecName, ${width}x$height, '
+          'nb_frames=${stream['nb_frames']}, duration=$duration');
 
       // Guess mime from codec
       if (codecName == 'gif') {

@@ -128,12 +128,19 @@ Future<void> performSearch(String query) async {
 }
 
 /// Add a reaction from a URL. Refreshes signals so the grid updates immediately.
+/// The reaction appears in the grid instantly (with "Queued…" status), then
+/// the ingest pipeline runs in the background and updates the tile progressively.
 Future<void> addReaction(String url, {String? title, List<String>? tags}) async {
   final c = coordinator;
   if (c == null) return;
+
+  // Add to coordinator (creates entry in metadata + starts ingest pipeline)
+  // This returns quickly — the reaction is in metadata immediately with
+  // status=queued, and the pipeline runs async in the background.
   await c.addReaction(url: url, title: title, tags: tags);
+
+  // Refresh the grid signal so the new reaction appears immediately
   refreshReactions();
-  await refreshHotlist();
 }
 
 /// Increment usage for a reaction. Refreshes signals so the grid updates.
