@@ -560,28 +560,60 @@ class FfmpegWrapper {
     int maxWidth = 256,
     int quality = 80,
   }) async {
-    final result = await Process.run(
-      ffmpegPath,
-      [
-        '-y', // overwrite output
-        '-i', inputPath,
-        '-vframes', '1',
-        '-vf', 'scale=$maxWidth:-1',
-        '-c:v', 'libwebp',
-        '-quality', quality.toString(),
-        outputPath,
-      ],
-    );
+    // Try libwebp first (better compression), fall back to webp muxer
+    // (always available, slightly larger output)
+    final args = [
+      '-y', // overwrite output
+      '-i', inputPath,
+      '-vframes', '1',
+      '-vf', 'scale=$maxWidth:-1',
+    ];
+
+    // Try libwebp encoder first
+    var result = await Process.run(ffmpegPath, [
+      ...args,
+      '-c:v', 'libwebp',
+      '-quality', quality.toString(),
+      outputPath,
+    ]);
 
     if (result.exitCode != 0) {
-      throw Exception(
-          'ffmpeg thumbnail generation failed: ${result.stderr}');
+      // Fall back to webp muxer (built into all ffmpeg builds)
+      final outputPathPng = outputPath.replaceAll('.webp', '.png');
+      result = await Process.run(ffmpegPath, [
+        ...args,
+        '-c:v', 'png',
+        outputPathPng,
+      ]);
+
+      if (result.exitCode != 0) {
+        throw Exception(
+            'ffmpeg thumbnail generation failed (both libwebp and png fallback):\n'
+            'libwebp stderr: see above\n'
+            'png fallback stderr: ${result.stderr}');
+      }
+
+      // Convert PNG to WebP using ffmpeg's webp muxer
+      final convertResult = await Process.run(ffmpegPath, [
+        '-y',
+        '-i', outputPathPng,
+        '-c:v', 'webp',
+        '-quality', quality.toString(),
+        outputPath,
+      ]);
+
+      // Clean up temp PNG
+      try {
+        await File(outputPathPng).delete();
+      } catch (_) {}
+
+      if (convertResult.exitCode != 0) {
+        throw Exception(
+            'ffmpeg PNG→WebP conversion failed: ${convertResult.stderr}');
+      }
     }
   }
 
-  /// Generate an animated WebP thumbnail (for animated previews).
-  ///
-  /// Downscales + reduces framerate for smaller file size.
   Future<void> generateAnimatedThumbnail({
     required String inputPath,
     required String outputPath,
@@ -589,22 +621,60 @@ class FfmpegWrapper {
     int fps = 10,
     int quality = 70,
   }) async {
-    final result = await Process.run(
-      ffmpegPath,
-      [
+    final args = [
+      '-y',
+      '-i', inputPath,
+      '-vf', 'scale=$maxWidth:-1,fps=$fps',
+    ];
+
+    // Try libwebp first
+    var result = await Process.run(ffmpegPath, [
+      ...args,
+      '-c:v', 'libwebp',
+      '-loop', '0',
+      '-quality', quality.toString(),
+      outputPath,
+    ]);
+
+    if (result.exitCode != 0) {
+      // Fall back to animated GIF (always supported, larger file)
+      final gifPath = outputPath.replaceAll('.webp', '.gif');
+      result = await Process.run(ffmpegPath, [
+        ...args,
+        '-c:v', 'gif',
+        gifPath,
+      ]);
+
+      if (result.exitCode != 0) {
+        throw Exception(
+            'ffmpeg animated thumbnail failed (both libwebp and gif fallback):\n'
+            'gif fallback stderr: ${result.stderr}');
+      }
+
+      // Convert GIF to animated WebP
+      final convertResult = await Process.run(ffmpegPath, [
         '-y',
-        '-i', inputPath,
-        '-vf', 'scale=$maxWidth:-1,fps=$fps',
-        '-c:v', 'libwebp',
+        '-i', gifPath,
+        '-c:v', 'webp',
         '-loop', '0',
         '-quality', quality.toString(),
         outputPath,
-      ],
-    );
+      ]);
 
-    if (result.exitCode != 0) {
-      throw Exception(
-          'ffmpeg animated thumbnail generation failed: ${result.stderr}');
+      try {
+        await File(gifPath).delete();
+      } catch (_) {}
+
+      if (convertResult.exitCode != 0) {
+        // If WebP conversion fails, just use the GIF directly
+        // (rename .gif to the output path — Flutter supports animated GIF)
+        try {
+          await File(gifPath).rename(outputPath);
+        } catch (_) {
+          throw Exception(
+              'ffmpeg animated thumbnail: all methods failed');
+        }
+      }
     }
   }
 }

@@ -322,6 +322,7 @@ class Coordinator {
             }
             _completeController.add(IngestCompleteMsg(reaction));
           case IngestFailedEvent(:final reactionId, :final error):
+            _debugPrint('Ingest FAILED for $reactionId: $error');
             final r = _metadata.byId(reactionId);
             if (r != null) {
               _updateReaction(r.copyWith(
