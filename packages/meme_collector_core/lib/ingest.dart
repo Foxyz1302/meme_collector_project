@@ -276,13 +276,35 @@ class UrlNormalizer {
     // ─── Discord ──────────────────────────────────────────────────────────
     // cdn.discordapp.com/attachments/... or media.discordapp.net/attachments/...
     // These URLs may be signed/expiring — auto-pin so we download immediately.
+    // Strip query parameters for the stored URL (cleaner, Discord resolves
+    // internally). Keep full URL for download.
     if (RegExp(r'^https?://(cdn\.discordapp\.com|media\.discordapp\.net)/attachments/')
         .hasMatch(url)) {
+      // Strip query params for stored URL
+      final uri = Uri.parse(url);
+      final cleanUrl = uri.origin + uri.path;
+
+      // Validate the URL is accessible (HEAD request)
+      try {
+        final response = await _dio.head<dynamic>(url);
+        if (response.statusCode != null && response.statusCode! >= 400) {
+          return NormalizedUrl(
+            directUrl: url, // keep full URL for download attempt
+            pageUrl: null,
+            platform: SourcePlatform.discord,
+            normalizedId: 'discord:${_sha256(cleanUrl)}',
+            autoPin: true,
+          );
+        }
+      } catch (_) {
+        // HEAD failed — URL might be expired. Still add it (user can retry).
+      }
+
       return NormalizedUrl(
-        directUrl: url,
+        directUrl: url, // full URL with params for download
         pageUrl: null,
         platform: SourcePlatform.discord,
-        normalizedId: 'discord:${_sha256(url)}',
+        normalizedId: 'discord:${_sha256(cleanUrl)}',
         autoPin: true, // Discord URLs expire — always pin
       );
     }

@@ -47,7 +47,6 @@ class GifGrid extends StatelessWidget {
               ),
             );
           }
-          // Sort newest first (UUID v7 is time-ordered, so string sort works)
           final sortedItems = List<Reaction>.from(allItems)
             ..sort((a, b) => b.id.compareTo(a.id));
           return CustomScrollView(
@@ -118,160 +117,224 @@ class _GifTile extends StatelessWidget {
     final colors = context.theme.colors;
     final c = coordinator!;
 
-    // Resolve file paths (relative → absolute)
-    final thumbnailStaticAbs =
-        reaction.thumbnailStatic != null
-            ? c.resolvePath(reaction.thumbnailStatic!)
-            : null;
-    final thumbnailAnimatedAbs =
-        reaction.thumbnailAnimated != null
-            ? c.resolvePath(reaction.thumbnailAnimated!)
-            : null;
+    final thumbnailStaticAbs = reaction.thumbnailStatic != null
+        ? c.resolvePath(reaction.thumbnailStatic!)
+        : null;
+    final thumbnailAnimatedAbs = reaction.thumbnailAnimated != null
+        ? c.resolvePath(reaction.thumbnailAnimated!)
+        : null;
     final localFileAbs =
-        reaction.localFile != null
-            ? c.resolvePath(reaction.localFile!)
-            : null;
+        reaction.localFile != null ? c.resolvePath(reaction.localFile!) : null;
 
-    return FTappable(
-      onPress: () async {
-        await Clipboard.setData(ClipboardData(text: reaction.url));
-        await incrementUsage(reaction.id);
-        if (context.mounted) {
-          showFToast(context: context, title: const Text('Link copied'));
-        }
-      },
-      onLongPress: () {
-        // TODO: right-click context menu
-      },
-      child: FCard.raw(
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
+    return FContextMenu(
+      menu: [
+        FContextMenuEntry.group(
           children: [
-            // Image layer — watches reactionDimensions for aspect ratio updates
-            SignalBuilder(
-              builder: (context) {
-                // Read both captured + stored dimensions
-                final capturedDims = reactionDimensions.value[reaction.id];
-                final storedDims =
-                    (reaction.width != null && reaction.height != null && reaction.height! > 0)
-                        ? (reaction.width!, reaction.height!)
-                        : null;
-                final effectiveDims = capturedDims;
-                // Use captured dims if available, otherwise stored, otherwise 1:1
-                final aspectRatio = effectiveDims != null && effectiveDims.$2 > 0
-                    ? effectiveDims.$1 / effectiveDims.$2
-                    : (storedDims != null && storedDims.$2 > 0
-                        ? storedDims.$1 / storedDims.$2
-                        : 1.0);
-
-                return AspectRatio(
-                  aspectRatio: aspectRatio,
-                  child: Image(
-                    image: ReactionImageProvider(
-                      reactionId: reaction.id,
-                      url: reaction.url,
-                      thumbnailStaticPath: thumbnailStaticAbs,
-                      thumbnailAnimatedPath: thumbnailAnimatedAbs,
-                      localFilePath: localFileAbs,
-                      animatedPreviewsEnabled: coordinator?.config.animatedPreviewsEnabled ?? false,
-                      onDimensions: (w, h) {
-                        // Capture dimensions for masonry layout + persist to metadata
-                        final current = reactionDimensions.value[reaction.id];
-                        if (current == null) {
-                          final newDims = Map<String, (int, int)>.from(
-                              reactionDimensions.value);
-                          newDims[reaction.id] = (w, h);
-                          reactionDimensions.value = newDims;
-                          // Also save to metadata so dimensions persist across launches
-                          coordinator?.updateDimensions(reaction.id, w, h);
-                        }
-                      },
-                    ),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stack) => Container(
-                      color: colors.muted,
-                      child: Icon(FLucideIcons.imageOff,
-                          size: 28, color: colors.mutedForeground),
-                    ),
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        color: colors.muted,
-                        child: Center(
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              value: loadingProgress.expectedTotalBytes !=
-                                      null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                );
+            FContextMenuEntry.item(
+              prefix: const Icon(FLucideIcons.link, size: 16),
+              title: const Text('Copy URL'),
+              onPress: () async {
+                await Clipboard.setData(ClipboardData(text: reaction.url));
+                if (context.mounted) {
+                  showFToast(context: context, title: const Text('Link copied'));
+                }
               },
             ),
-
-            // Status text overlay (shows what ingest is doing)
-            SignalBuilder(
-              builder: (context) {
-                final status = ingestStatus.value[reaction.id];
-                // Debug: print when status changes for this tile
-                if (status != null && status.isNotEmpty) {
-                  print('[UI] ${reaction.id}: status overlay = "$status"');
-                }
-                if (status == null || status.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-                return Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.7),
-                        ],
-                      ),
-                    ),
-                    child: Text(
-                      status,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        decoration: null,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                );
+            if (localFileAbs != null)
+              FContextMenuEntry.item(
+                prefix: const Icon(FLucideIcons.fileCopy, size: 16),
+                title: const Text('Copy file path'),
+                onPress: () async {
+                  await Clipboard.setData(ClipboardData(text: localFileAbs));
+                  if (context.mounted) {
+                    showFToast(context: context, title: const Text('Path copied'));
+                  }
+                },
+              ),
+            FContextMenuEntry.item(
+              prefix: const Icon(FLucideIcons.externalLink, size: 16),
+              title: const Text('Open in browser'),
+              onPress: () {
+                // TODO: url_launcher
               },
             ),
-
-            // Usage count badge
-            if (reaction.usageCount > 0)
-              Positioned(
-                right: 4,
-                top: 4,
-                child: FBadge(
-                  variant: FBadgeVariant.secondary,
-                  child: Text('${reaction.usageCount}'),
-                ),
+          ],
+        ),
+        FContextMenuEntry.group(
+          children: [
+            FContextMenuEntry.item(
+              prefix: const Icon(FLucideIcons.refreshCw, size: 16),
+              title: const Text('Re-embed'),
+              onPress: () async {
+                await c.reEmbedImage(reaction.id);
+                if (context.mounted) {
+                  showFToast(context: context, title: const Text('Re-embedded'));
+                }
+              },
+            ),
+            FContextMenuEntry.item(
+              prefix: const Icon(FLucideIcons.imageRefresh, size: 16),
+              title: const Text('Re-generate thumbnail'),
+              onPress: () async {
+                await c.regenerateThumbnails(reaction.id);
+                refreshReactions();
+                if (context.mounted) {
+                  showFToast(context: context, title: const Text('Thumbnail regenerated'));
+                }
+              },
+            ),
+            if (!reaction.pinned)
+              FContextMenuEntry.item(
+                prefix: const Icon(FLucideIcons.pin, size: 16),
+                title: const Text('Pin locally'),
+                onPress: () async {
+                  await c.pinReaction(reaction.id);
+                  refreshReactions();
+                },
               ),
           ],
+        ),
+        FContextMenuEntry.group(
+          children: [
+            FContextMenuEntry.item(
+              prefix: const Icon(FLucideIcons.trash2, size: 16),
+              title: const Text('Delete'),
+              onPress: () async {
+                await c.deleteReaction(reaction.id);
+                refreshReactions();
+                if (context.mounted) {
+                  showFToast(context: context, title: const Text('Deleted'));
+                }
+              },
+            ),
+          ],
+        ),
+      ],
+      child: FTappable(
+        onPress: () async {
+          await Clipboard.setData(ClipboardData(text: reaction.url));
+          await incrementUsage(reaction.id);
+          if (context.mounted) {
+            showFToast(context: context, title: const Text('Link copied'));
+          }
+        },
+        child: FCard.raw(
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              SignalBuilder(
+                builder: (context) {
+                  final capturedDims = reactionDimensions.value[reaction.id];
+                  final storedDims =
+                      (reaction.width != null && reaction.height != null && reaction.height! > 0)
+                          ? (reaction.width!, reaction.height!)
+                          : null;
+                  final effectiveDims = capturedDims;
+                  final aspectRatio = effectiveDims != null && effectiveDims.$2 > 0
+                      ? effectiveDims.$1 / effectiveDims.$2
+                      : (storedDims != null && storedDims.$2 > 0
+                          ? storedDims.$1 / storedDims.$2
+                          : 1.0);
+
+                  return AspectRatio(
+                    aspectRatio: aspectRatio,
+                    child: Image(
+                      image: ReactionImageProvider(
+                        reactionId: reaction.id,
+                        url: reaction.url,
+                        thumbnailStaticPath: thumbnailStaticAbs,
+                        thumbnailAnimatedPath: thumbnailAnimatedAbs,
+                        localFilePath: localFileAbs,
+                        animatedPreviewsEnabled:
+                            coordinator?.config.animatedPreviewsEnabled ?? false,
+                        onDimensions: (w, h) {
+                          final current = reactionDimensions.value[reaction.id];
+                          if (current == null) {
+                            final newDims = Map<String, (int, int)>.from(
+                                reactionDimensions.value);
+                            newDims[reaction.id] = (w, h);
+                            reactionDimensions.value = newDims;
+                            coordinator?.updateDimensions(reaction.id, w, h);
+                          }
+                        },
+                      ),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stack) => Container(
+                        color: colors.muted,
+                        child: Icon(FLucideIcons.imageOff,
+                            size: 28, color: colors.mutedForeground),
+                      ),
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: colors.muted,
+                          child: Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+              SignalBuilder(
+                builder: (context) {
+                  final status = ingestStatus.value[reaction.id];
+                  if (status == null || status.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.7),
+                          ],
+                        ),
+                      ),
+                      child: Text(
+                        status,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          decoration: null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              if (reaction.usageCount > 0)
+                Positioned(
+                  right: 4,
+                  top: 4,
+                  child: FBadge(
+                    variant: FBadgeVariant.secondary,
+                    child: Text('${reaction.usageCount}'),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

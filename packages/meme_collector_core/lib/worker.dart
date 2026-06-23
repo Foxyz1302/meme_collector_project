@@ -358,20 +358,24 @@ class Coordinator {
       return hotlist(limit: topK);
     }
 
-    // Embed query in main isolate (fast, doesn't need ingest isolate)
+    _debugPrint('Search: "$query"');
+
+    // Embed query via inference isolate
     Float32List? textVec;
     Float32List? clipVec;
     try {
       textVec = await _queryEmbedder.embed(query);
-    } catch (_) {
-      // model2vec failed — fall back to keyword-only search
+      _debugPrint('Search: text embedding OK (${textVec.length} dims)');
+    } catch (e) {
+      _debugPrint('Search: text embedding FAILED: $e');
     }
 
     if (_clipTextEmbedder != null) {
       try {
         clipVec = await _clipTextEmbedder.embed(query);
-      } catch (_) {
-        // CLIP failed — text-only search
+        _debugPrint('Search: CLIP text embedding OK (${clipVec.length} dims)');
+      } catch (e) {
+        _debugPrint('Search: CLIP text embedding FAILED: $e');
       }
     }
 
@@ -511,6 +515,61 @@ class Coordinator {
     }
   }
 
+  /// Re-embed a reaction's image (re-run CLIP vision on the existing thumbnail).
+  Future<void> reEmbedImage(String id) async {
+    final reaction = _metadata.byId(id);
+    if (reaction == null || reaction.thumbnailStatic == null) return;
+    if (_ingestImageEmbedder == null) return;
+
+    try {
+      await _ingestImageEmbedder!.init();
+      final thumbAbsPath = resolvePath(reaction.thumbnailStatic!);
+      final imageVec = await _ingestImageEmbedder!.embedFile(thumbAbsPath);
+      final vecPath = _storage.imageEmbeddingPath(
+          id, 'clip-vit-b32-fp16', config.activeImageModelVersion);
+      await writeVectorFile(vecPath, imageVec);
+
+      final updated = reaction.copyWith(
+        imageEmbeddingPath: p.relative(vecPath, from: _storage.rootPath)
+            .replaceAll('\\', '/'),
+        imageModelVersion: config.activeImageModelVersion,
+      );
+      _updateReaction(updated);
+      _scheduleSave();
+      _searchIso?.send(VectorIndexAddImage(id, imageVec));
+    } catch (e) {
+      _debugPrint('Re-embed failed for $id: $e');
+    }
+  }
+
+  /// Re-generate thumbnails for a reaction.
+  Future<void> regenerateThumbnails(String id) async {
+    final reaction = _metadata.byId(id);
+    if (reaction == null || reaction.localFile == null || _ffmpeg == null) return;
+
+    final localPath = resolvePath(reaction.localFile!);
+    try {
+      await _ffmpeg!.generateStaticThumbnail(
+        inputPath: localPath,
+        outputPath: _storage.thumbnailStaticPath(id),
+      );
+
+      // Also regenerate animated if enabled
+      if (config.animatedPreviewsEnabled) {
+        try {
+          await _ffmpeg!.generateAnimatedThumbnail(
+            inputPath: localPath,
+            outputPath: _storage.thumbnailAnimatedPath(id),
+          );
+        } catch (_) {}
+      }
+
+      _debugPrint('Thumbnails regenerated for $id');
+    } catch (e) {
+      _debugPrint('Thumbnail regeneration failed for $id: $e');
+    }
+  }
+
   /// Update dimensions for a reaction (from image provider decode).
   /// Saves to metadata so dimensions persist across launches.
   Future<void> updateDimensions(String id, int width, int height) async {
@@ -584,14 +643,14 @@ class Coordinator {
 
   void _onSearchResponse(WorkerMessage msg) {
     if (msg is SearchResponse) {
-      // Route to whichever queue is waiting. Both searches and hotlists
-      // return SearchResponse, so we check both queues.
+      _debugPrint('Search: received ${msg.results.length} results');
       if (_pendingSearches.isNotEmpty) {
         _pendingSearches.removeAt(0).complete(msg.results);
       } else if (_pendingHotlists.isNotEmpty) {
         _pendingHotlists.removeAt(0).complete(msg.results);
       }
     } else if (msg is SearchError) {
+      _debugPrint('Search: ERROR ${msg.error}');
       if (_pendingSearches.isNotEmpty) {
         _pendingSearches.removeAt(0).complete([]);
       } else if (_pendingHotlists.isNotEmpty) {
