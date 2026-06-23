@@ -44,30 +44,22 @@ Future<void> _initCoordinator() async {
     await Directory(storagePath).create(recursive: true);
 
     // ─── Determine models directory ────────────────────────────────────────
-    final modelsDir = p.normalize(
-        p.join(Directory.current.path, '..', '..', 'assets', 'models'));
+    final modelsDir = p.normalize(p.join(Directory.current.path, '..', '..', 'assets', 'models'));
 
     // ─── Initialize inference isolate (runs ONNX off the main thread) ──────
     final isolateManager = InferenceIsolateManager();
-    await isolateManager.spawn(InferenceIsolateConfig(
-      clipTextModelPath: p.join(modelsDir, 'clip_text_fp16.onnx'),
-      clipTokenizerPath: p.join(modelsDir, 'clip_tokenizer.json'),
-      clipVisionModelPath: p.join(modelsDir, 'clip_vision_fp16.onnx'),
-    ));
-
-    // ─── Initialize Coordinator ────────────────────────────────────────────
-    coordinator = Coordinator(
-      config: CoordinatorConfig(
-        storagePath: storagePath,
-        animatedPreviewsEnabled: false,
-        ocrEnabled: false,
+    await isolateManager.spawn(
+      InferenceIsolateConfig(
+        clipTextModelPath: p.join(modelsDir, 'clip_text_fp16.onnx'),
+        clipTokenizerPath: p.join(modelsDir, 'clip_tokenizer.json'),
+        clipVisionModelPath: p.join(modelsDir, 'clip_vision_fp16.onnx'),
       ),
     );
 
-    await coordinator!.init(AppInferenceFactory(
-      modelsDir: modelsDir,
-      isolateManager: isolateManager,
-    ));
+    // ─── Initialize Coordinator ────────────────────────────────────────────
+    coordinator = Coordinator(config: CoordinatorConfig(storagePath: storagePath, animatedPreviewsEnabled: true, ocrEnabled: false));
+
+    await coordinator!.init(AppInferenceFactory(modelsDir: modelsDir, isolateManager: isolateManager));
 
     // Wire coordinator streams to signals (for UI rebuilds)
     wireCoordinatorToSignals();
@@ -89,11 +81,7 @@ class ReactionRouletteApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = <TargetPlatform>{
-      TargetPlatform.android,
-      TargetPlatform.iOS,
-      TargetPlatform.fuchsia,
-    }.contains(defaultTargetPlatform)
+    final theme = <TargetPlatform>{TargetPlatform.android, TargetPlatform.iOS, TargetPlatform.fuchsia}.contains(defaultTargetPlatform)
         ? FThemes.neutral.dark.touch
         : FThemes.neutral.dark.desktop;
 
@@ -110,9 +98,7 @@ class ReactionRouletteApp extends StatelessWidget {
       home: SignalBuilder(
         builder: (context) {
           if (initError.value != null) {
-            return _LoadingScreen(
-              error: initError.value,
-            );
+            return _LoadingScreen(error: initError.value);
           }
           if (!isInitialized.value) {
             return const _LoadingScreen();
@@ -138,33 +124,18 @@ class _LoadingScreen extends StatelessWidget {
             if (error != null) ...[
               const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 16),
-              Text('Initialization failed',
-                  style: Theme.of(context).textTheme.titleLarge),
+              Text('Initialization failed', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  error!,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                child: Text(error!, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
               ),
             ] else ...[
-              const SizedBox(
-                width: 48,
-                height: 48,
-                child: CircularProgressIndicator(),
-              ),
+              const SizedBox(width: 48, height: 48, child: CircularProgressIndicator()),
               const SizedBox(height: 24),
-              Text(
-                'Loading Reaction Roulette...',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text('Loading Reaction Roulette...', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
-              Text(
-                'Initializing search engine + loading AI models',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              Text('Initializing search engine + loading AI models', style: Theme.of(context).textTheme.bodySmall),
             ],
           ],
         ),

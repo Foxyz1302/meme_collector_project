@@ -19,8 +19,7 @@ class GifGrid extends StatelessWidget {
     return SignalBuilder(
       builder: (context) {
         final query = searchQuery.value;
-        final searchItems =
-            query.isEmpty ? <SearchResult>[] : searchResults.value;
+        final searchItems = query.isEmpty ? <SearchResult>[] : searchResults.value;
         final allItems = allReactions.value;
 
         if (query.isEmpty) {
@@ -47,13 +46,11 @@ class GifGrid extends StatelessWidget {
               ),
             );
           }
-          final sortedItems = List<Reaction>.from(allItems)
-            ..sort((a, b) => b.id.compareTo(a.id));
+          final sortedItems = List<Reaction>.from(allItems)..sort((a, b) => b.id.compareTo(a.id));
           return CustomScrollView(
             slivers: [
               SliverWaterfallFlow(
-                gridDelegate:
-                    SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
+                gridDelegate: SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 300,
                   crossAxisSpacing: 4,
                   mainAxisSpacing: 4,
@@ -74,10 +71,7 @@ class GifGrid extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               spacing: 8,
-              children: [
-                const Icon(FLucideIcons.searchX, size: 32),
-                Text(isSearching.value ? 'Searching…' : 'No matches'),
-              ],
+              children: [const Icon(FLucideIcons.searchX, size: 32), Text(isSearching.value ? 'Searching…' : 'No matches')],
             ),
           );
         }
@@ -85,21 +79,17 @@ class GifGrid extends StatelessWidget {
         return CustomScrollView(
           slivers: [
             SliverWaterfallFlow(
-              gridDelegate:
-                  SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
+              gridDelegate: SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 300,
                 crossAxisSpacing: 4,
                 mainAxisSpacing: 4,
               ),
-              delegate: SliverChildBuilderDelegate(
-                (context, i) {
-                  final result = items[i];
-                  final reaction = coordinator?.getReaction(result.reactionId);
-                  if (reaction == null) return const SizedBox.shrink();
-                  return _GifTile(reaction: reaction);
-                },
-                childCount: items.length,
-              ),
+              delegate: SliverChildBuilderDelegate((context, i) {
+                final result = items[i];
+                final reaction = coordinator?.getReaction(result.reactionId);
+                if (reaction == null) return const SizedBox.shrink();
+                return _GifTile(reaction: reaction);
+              }, childCount: items.length),
             ),
           ],
         );
@@ -116,7 +106,7 @@ class _GifTile extends StatefulWidget {
   State<_GifTile> createState() => _GifTileState();
 }
 
-class _GifTileState extends State<_GifTile> {
+class _GifTileState extends State<_GifTile> with TickerProviderStateMixin {
   late final FPopoverController _menuController;
 
   @override
@@ -142,23 +132,16 @@ class _GifTileState extends State<_GifTile> {
     final colors = context.theme.colors;
     final c = coordinator!;
 
-    final thumbnailStaticAbs = reaction.thumbnailStatic != null
-        ? c.resolvePath(reaction.thumbnailStatic!)
-        : null;
-    final thumbnailAnimatedAbs = reaction.thumbnailAnimated != null
-        ? c.resolvePath(reaction.thumbnailAnimated!)
-        : null;
-    final localFileAbs =
-        reaction.localFile != null ? c.resolvePath(reaction.localFile!) : null;
+    final thumbnailStaticAbs = reaction.thumbnailStatic != null ? c.resolvePath(reaction.thumbnailStatic!) : null;
+    final thumbnailAnimatedAbs = reaction.thumbnailAnimated != null ? c.resolvePath(reaction.thumbnailAnimated!) : null;
+    final localFileAbs = reaction.localFile != null ? c.resolvePath(reaction.localFile!) : null;
 
     return FContextMenu(
-      control: FContextMenuControl.managed(
-        controller: _menuController,
-      ),
+      control: .managed(controller: _menuController),
       menu: [
-        FContextMenuEntry.group(
+        .group(
           children: [
-            FContextMenuEntry.item(
+            .item(
               prefix: const Icon(FLucideIcons.link, size: 16),
               title: const Text('Copy URL'),
               onPress: () async {
@@ -170,8 +153,8 @@ class _GifTileState extends State<_GifTile> {
               },
             ),
             if (localFileAbs != null)
-              FContextMenuEntry.item(
-                prefix: const Icon(FLucideIcons.fileCopy, size: 16),
+              .item(
+                prefix: const Icon(FLucideIcons.clipboardCopy, size: 16),
                 title: const Text('Copy file path'),
                 onPress: () async {
                   _hideMenu();
@@ -181,11 +164,18 @@ class _GifTileState extends State<_GifTile> {
                   }
                 },
               ),
+            // .item(
+            //   prefix: const Icon(FLucideIcons.externalLink, size: 16),
+            //   title: const Text('Open in browser'),
+            //   onPress: () {
+            //     // TODO: url_launcher
+            //   },
+            // ),
           ],
         ),
-        FContextMenuEntry.group(
+        .group(
           children: [
-            FContextMenuEntry.item(
+            .item(
               prefix: const Icon(FLucideIcons.refreshCw, size: 16),
               title: const Text('Re-embed'),
               onPress: () async {
@@ -196,8 +186,8 @@ class _GifTileState extends State<_GifTile> {
                 }
               },
             ),
-            FContextMenuEntry.item(
-              prefix: const Icon(FLucideIcons.imageRefresh, size: 16),
+            .item(
+              prefix: const Icon(FLucideIcons.refreshCcw, size: 16),
               title: const Text('Re-generate thumbnail'),
               onPress: () async {
                 _hideMenu();
@@ -209,7 +199,7 @@ class _GifTileState extends State<_GifTile> {
               },
             ),
             if (!reaction.pinned)
-              FContextMenuEntry.item(
+              .item(
                 prefix: const Icon(FLucideIcons.pin, size: 16),
                 title: const Text('Pin locally'),
                 onPress: () async {
@@ -220,9 +210,9 @@ class _GifTileState extends State<_GifTile> {
               ),
           ],
         ),
-        FContextMenuEntry.group(
+        .group(
           children: [
-            FContextMenuEntry.item(
+            .item(
               prefix: const Icon(FLucideIcons.trash2, size: 16),
               title: const Text('Delete'),
               onPress: () async {
@@ -252,16 +242,13 @@ class _GifTileState extends State<_GifTile> {
               SignalBuilder(
                 builder: (context) {
                   final capturedDims = reactionDimensions.value[reaction.id];
-                  final storedDims =
-                      (reaction.width != null && reaction.height != null && reaction.height! > 0)
-                          ? (reaction.width!, reaction.height!)
-                          : null;
+                  final storedDims = (reaction.width != null && reaction.height != null && reaction.height! > 0)
+                      ? (reaction.width!, reaction.height!)
+                      : null;
                   final effectiveDims = capturedDims;
                   final aspectRatio = effectiveDims != null && effectiveDims.$2 > 0
                       ? effectiveDims.$1 / effectiveDims.$2
-                      : (storedDims != null && storedDims.$2 > 0
-                          ? storedDims.$1 / storedDims.$2
-                          : 1.0);
+                      : (storedDims != null && storedDims.$2 > 0 ? storedDims.$1 / storedDims.$2 : 1.0);
 
                   return AspectRatio(
                     aspectRatio: aspectRatio,
@@ -272,13 +259,11 @@ class _GifTileState extends State<_GifTile> {
                         thumbnailStaticPath: thumbnailStaticAbs,
                         thumbnailAnimatedPath: thumbnailAnimatedAbs,
                         localFilePath: localFileAbs,
-                        animatedPreviewsEnabled:
-                            coordinator?.config.animatedPreviewsEnabled ?? false,
+                        animatedPreviewsEnabled: coordinator?.config.animatedPreviewsEnabled ?? false,
                         onDimensions: (w, h) {
                           final current = reactionDimensions.value[reaction.id];
                           if (current == null) {
-                            final newDims = Map<String, (int, int)>.from(
-                                reactionDimensions.value);
+                            final newDims = Map<String, (int, int)>.from(reactionDimensions.value);
                             newDims[reaction.id] = (w, h);
                             reactionDimensions.value = newDims;
                             coordinator?.updateDimensions(reaction.id, w, h);
@@ -288,8 +273,7 @@ class _GifTileState extends State<_GifTile> {
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stack) => Container(
                         color: colors.muted,
-                        child: Icon(FLucideIcons.imageOff,
-                            size: 28, color: colors.mutedForeground),
+                        child: Icon(FLucideIcons.imageOff, size: 28, color: colors.mutedForeground),
                       ),
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
@@ -302,8 +286,7 @@ class _GifTileState extends State<_GifTile> {
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                                 value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
+                                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
                                     : null,
                               ),
                             ),
@@ -325,25 +308,17 @@ class _GifTileState extends State<_GifTile> {
                     right: 0,
                     bottom: 0,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: 0.7),
-                          ],
+                          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
                         ),
                       ),
                       child: Text(
                         status,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          decoration: null,
-                        ),
+                        style: const TextStyle(color: Colors.white, fontSize: 11, decoration: null),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -355,10 +330,7 @@ class _GifTileState extends State<_GifTile> {
                 Positioned(
                   right: 4,
                   top: 4,
-                  child: FBadge(
-                    variant: FBadgeVariant.secondary,
-                    child: Text('${reaction.usageCount}'),
-                  ),
+                  child: FBadge(variant: FBadgeVariant.secondary, child: Text('${reaction.usageCount}')),
                 ),
             ],
           ),

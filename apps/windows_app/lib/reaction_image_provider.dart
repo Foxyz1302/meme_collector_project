@@ -66,8 +66,7 @@ class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
   }
 
   @override
-  ImageStreamCompleter loadImage(
-      ReactionImageProvider key, ImageDecoderCallback decode) {
+  ImageStreamCompleter loadImage(ReactionImageProvider key, ImageDecoderCallback decode) {
     final chunkEvents = StreamController<ImageChunkEvent>();
 
     final codec = _loadAsync(key, decode, chunkEvents);
@@ -77,18 +76,11 @@ class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
       chunkEvents: chunkEvents.stream,
       scale: key.scale,
       debugLabel: key._cacheKey,
-      informationCollector: () => [
-        DiagnosticsProperty<String>('Cache key', key._cacheKey),
-        DiagnosticsProperty<String>('URL', key.url),
-      ],
+      informationCollector: () => [DiagnosticsProperty<String>('Cache key', key._cacheKey), DiagnosticsProperty<String>('URL', key.url)],
     );
   }
 
-  Future<ui.Codec> _loadAsync(
-    ReactionImageProvider key,
-    ImageDecoderCallback decode,
-    StreamController<ImageChunkEvent> chunkEvents,
-  ) async {
+  Future<ui.Codec> _loadAsync(ReactionImageProvider key, ImageDecoderCallback decode, StreamController<ImageChunkEvent> chunkEvents) async {
     try {
       // Priority 1: animated thumbnail (if enabled)
       if (key.animatedPreviewsEnabled && key.thumbnailAnimatedPath != null) {
@@ -113,19 +105,14 @@ class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
     }
   }
 
-  Future<ui.Codec> _decodeFile(
-      String path, ImageDecoderCallback decode) async {
+  Future<ui.Codec> _decodeFile(String path, ImageDecoderCallback decode) async {
     final buffer = await ui.ImmutableBuffer.fromFilePath(path);
     final codec = await decode(buffer);
     await _reportDimensionsFromCodec(codec);
     return codec;
   }
 
-  Future<ui.Codec> _decodeNetwork(
-    String url,
-    ImageDecoderCallback decode,
-    StreamController<ImageChunkEvent> chunkEvents,
-  ) async {
+  Future<ui.Codec> _decodeNetwork(String url, ImageDecoderCallback decode, StreamController<ImageChunkEvent> chunkEvents) async {
     // Download to a temp file via dio, then decode
     final tempDir = await Directory.systemTemp.createTemp('reaction_img');
     final tempFile = File('${tempDir.path}/img');
@@ -136,10 +123,7 @@ class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
       tempFile.path,
       onReceiveProgress: (received, total) {
         if (total > 0) {
-          chunkEvents.add(ImageChunkEvent(
-            cumulativeBytesLoaded: received,
-            expectedTotalBytes: total,
-          ));
+          chunkEvents.add(ImageChunkEvent(cumulativeBytesLoaded: received, expectedTotalBytes: total));
         }
       },
     );
@@ -184,15 +168,12 @@ class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is ReactionImageProvider &&
-        other.reactionId == reactionId &&
-        other._cacheKey == _cacheKey;
+    return other is ReactionImageProvider && other.reactionId == reactionId && other._cacheKey == _cacheKey;
   }
 
   @override
   int get hashCode => Object.hash(reactionId, _cacheKey);
 
   @override
-  String toString() =>
-      'ReactionImageProvider($reactionId, key: $_cacheKey)';
+  String toString() => 'ReactionImageProvider($reactionId, key: $_cacheKey)';
 }
