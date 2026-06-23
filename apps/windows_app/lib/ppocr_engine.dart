@@ -35,6 +35,7 @@ class PpocrEngine implements OcrEngine {
   OrtSession? _recSession;
   List<String>? _dict;
   bool _initialized = false;
+  int _blankIndex = 0;
 
   /// Detection model input size (960×960 is the default for PP-OCRv5)
   static const int _detSize = 960;
@@ -47,7 +48,6 @@ class PpocrEngine implements OcrEngine {
   static const double _detThreshold = 0.3;
 
   /// Blank token index for CTC decoding (last index in the dict)
-  late final int _blankIndex;
 
   PpocrEngine({
     required String detModelPath,

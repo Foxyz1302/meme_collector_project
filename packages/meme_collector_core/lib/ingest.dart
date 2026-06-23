@@ -800,6 +800,11 @@ class IngestConfig {
   final String imageModelVersion;
   final String ocrModelVersion;
 
+  /// Callback to run OCR in a background isolate.
+  /// Takes an image path, returns recognized text (or null).
+  /// The app provides this — it creates a PpocrEngine inside the isolate.
+  final Future<String?> Function(String imagePath)? ocrIsolateCallback;
+
   const IngestConfig({
     this.animatedPreviewsEnabled = false,
     this.ocrEnabled = false,
@@ -807,6 +812,7 @@ class IngestConfig {
     this.textModelVersion = 'potion-base-32M',
     this.imageModelVersion = 'clip-vit-b32-fp16-v1',
     this.ocrModelVersion = 'pp-ocr-v5',
+    this.ocrIsolateCallback,
   });
 }
 
@@ -962,7 +968,7 @@ class IngestPipeline {
           reaction: reaction);
 
       // ─── Stage 5: OCR (optional) ───────────────────────────────────────
-      if (config.ocrEnabled && ocrEngine != null) {
+      if (config.ocrEnabled && config.ocrIsolateCallback != null) {
         print('[Ingest] ${reaction.id}: OCR...');
         reaction = reaction.copyWith(status: ReactionStatus.ocr, progress: 0.9);
         yield IngestProgressEvent(
@@ -972,9 +978,9 @@ class IngestPipeline {
             reaction: reaction);
 
         try {
-          await ocrEngine!.init();
           final thumbAbsPath = p.join(storage.rootPath, reaction.thumbnailStatic!);
-          final ocrText = await ocrEngine!.ocrFile(thumbAbsPath);
+          final ocrText = await config.ocrIsolateCallback!(thumbAbsPath);
+
           if (ocrText != null && ocrText.isNotEmpty) {
             final ocrPath = storage.ocrPath(reaction.id);
             await File(ocrPath).writeAsString(ocrText, flush: true);

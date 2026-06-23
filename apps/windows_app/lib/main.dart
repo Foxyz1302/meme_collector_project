@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import 'package:meme_collector_core/meme_collector_core.dart';
 
 import 'inference_factory.dart';
 import 'inference_isolate.dart';
+import 'ppocr_engine.dart';
 import 'state/signals.dart';
 import 'widgets/home_scaffold.dart';
 
@@ -57,7 +59,25 @@ Future<void> _initCoordinator() async {
     );
 
     // ─── Initialize Coordinator ────────────────────────────────────────────
-    coordinator = Coordinator(config: CoordinatorConfig(storagePath: storagePath, animatedPreviewsEnabled: true, ocrEnabled: false));
+    coordinator = Coordinator(config: CoordinatorConfig(
+      storagePath: storagePath,
+      animatedPreviewsEnabled: true,
+      ocrEnabled: false, // Set to true once OCR recognition is fixed
+      ocrIsolateCallback: (imagePath) async {
+        // Run OCR in a background isolate — creates its own ONNX sessions
+        return await Isolate.run(() async {
+          final engine = PpocrEngine(
+            detModelPath: p.join(modelsDir, 'ppocr_det.onnx'),
+            recModelPath: p.join(modelsDir, 'ppocr_rec.onnx'),
+            dictPath: p.join(modelsDir, 'ppocr_dict.txt'),
+          );
+          await engine.init();
+          final result = await engine.ocrFile(imagePath);
+          await engine.dispose();
+          return result;
+        });
+      },
+    ));
 
     await coordinator!.init(AppInferenceFactory(modelsDir: modelsDir, isolateManager: isolateManager));
 

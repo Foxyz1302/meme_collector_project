@@ -864,7 +864,13 @@ class CoordinatorConfig {
     this.activeTextModelVersion = 'clip-vit-b32-fp16-v1',
     this.activeImageModelVersion = 'clip-vit-b32-fp16-v1',
     this.activeOcrModelVersion = 'pp-ocr-v5',
+    this.ocrIsolateCallback,
   });
+
+  /// Callback to run OCR in a background isolate.
+  /// Takes an image path, returns recognized text (or null).
+  /// The app sets this — it creates a PpocrEngine inside Isolate.run.
+  final Future<String?> Function(String imagePath)? ocrIsolateCallback;
 
   /// Convert to IngestConfig for the ingest pipeline.
   IngestConfig get ingestConfig => IngestConfig(
@@ -873,6 +879,7 @@ class CoordinatorConfig {
         textModelVersion: activeTextModelVersion,
         imageModelVersion: activeImageModelVersion,
         ocrModelVersion: activeOcrModelVersion,
+        ocrIsolateCallback: ocrIsolateCallback,
       );
 }
 
