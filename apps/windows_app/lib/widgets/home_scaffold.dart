@@ -31,6 +31,13 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       autofocus: true,
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent) {
+          // Ctrl+V — paste URL from clipboard
+          if ((HardwareKeyboard.instance.isControlPressed ||
+                  HardwareKeyboard.instance.isMetaPressed) &&
+              event.logicalKey == LogicalKeyboardKey.keyV) {
+            _pasteFromClipboard();
+            return KeyEventResult.handled;
+          }
           if (event.logicalKey == LogicalKeyboardKey.enter) {
             // TODO: copy first result
             return KeyEventResult.handled;
@@ -60,5 +67,13 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         ),
       ),
     );
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final clipData = await Clipboard.getData('text/plain');
+    final url = clipData?.text?.trim();
+    if (url != null && url.isNotEmpty) {
+      await addReaction(url);
+    }
   }
 }
