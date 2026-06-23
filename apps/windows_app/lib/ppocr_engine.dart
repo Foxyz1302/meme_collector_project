@@ -73,10 +73,11 @@ class PpocrEngine implements OcrEngine {
     // Load character dictionary
     final dictContent = await File(_dictPath).readAsString();
     _dict = dictContent.split('\n').where((l) => l.isNotEmpty).toList();
+    // RapidOCR adds space char with use_space_char=True
+    _dict!.add(' ');
     // PP-OCR uses CTC blank at index 0, not the last index.
-    // The dict file contains the actual characters (no blank entry).
-    // The model outputs num_classes = dict.length + 1 (extra for blank at 0).
-    // So index 0 = blank, indices 1..N = dict[0]..dict[N-1].
+    // Model outputs: 0=blank, 1..N=dict[0]..dict[N-1], N+1=space
+    // Total classes = dict.length + 1 (blank)
     _blankIndex = 0;
 
     _initialized = true;
@@ -138,8 +139,23 @@ class PpocrEngine implements OcrEngine {
     // Resize to 960×960 (maintaining aspect ratio with padding)
     final resized = _resizeForDetection(image);
 
-    // Convert to NCHW float32, normalize to [0, 1]
-    final input = _imageToNchw(resized, _detSize, _detSize, normalize: true);
+    // PaddleOCR detection normalization:
+    // scale=1/255, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+    // BGR channel order (OpenCV convention)
+    final input = Float32List(3 * _detSize * _detSize);
+    for (var y = 0; y < _detSize; y++) {
+      for (var x = 0; x < _detSize; x++) {
+        final pixel = resized.getPixel(x, y);
+        // BGR order, ImageNet normalization
+        final b = (pixel.bNormalized - 0.485) / 0.229;
+        final g = (pixel.gNormalized - 0.456) / 0.224;
+        final r = (pixel.rNormalized - 0.406) / 0.225;
+        final idx = y * _detSize + x;
+        input[0 * _detSize * _detSize + idx] = b.toDouble(); // B
+        input[1 * _detSize * _detSize + idx] = g.toDouble(); // G
+        input[2 * _detSize * _detSize + idx] = r.toDouble(); // R
+      }
+    }
 
     // Run inference
     final inputTensor = OrtValueTensor.createTensorWithDataList(input, [1, 3, _detSize, _detSize]);
