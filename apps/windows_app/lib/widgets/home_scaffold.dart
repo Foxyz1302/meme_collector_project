@@ -6,7 +6,6 @@ import 'package:signals_flutter/signals_flutter.dart';
 import 'package:meme_collector_core/meme_collector_core.dart';
 
 import 'gif_grid.dart';
-import 'app_searchbar.dart';
 import 'app_sidebar.dart';
 import '../state/signals.dart';
 
@@ -66,18 +65,12 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     // Validate URL
     final validation = UrlValidator.validate(url);
     if (!validation.isValid) {
-      showFToast(
-        context: context,
-        title: Text(validation.reason ?? 'Invalid URL'),
-      );
+      showFToast(context: context, title: Text(validation.reason ?? 'Invalid URL'));
       return;
     }
 
     // Show toast that we're adding
-    showFToast(
-      context: context,
-      title: const Text('Adding reaction…'),
-    );
+    showFToast(context: context, title: const Text('Adding reaction…'));
 
     await addReaction(url);
   }

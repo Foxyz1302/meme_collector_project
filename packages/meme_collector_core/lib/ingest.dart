@@ -44,23 +44,11 @@ class ValidationResult {
   /// The detected media type (if determinable from URL).
   final MediaType? mediaType;
 
-  const ValidationResult({
-    required this.isValid,
-    this.reason,
-    this.platform,
-    this.mediaType,
-  });
+  const ValidationResult({required this.isValid, this.reason, this.platform, this.mediaType});
 
-  const ValidationResult.valid({
-    required this.platform,
-    this.mediaType,
-  })  : isValid = true,
-        reason = null;
+  const ValidationResult.valid({required this.platform, this.mediaType}) : isValid = true, reason = null;
 
-  const ValidationResult.invalid(this.reason)
-      : isValid = false,
-        platform = null,
-        mediaType = null;
+  const ValidationResult.invalid(this.reason) : isValid = false, platform = null, mediaType = null;
 }
 
 /// Detected media type from URL or content-type.
@@ -123,7 +111,7 @@ class UrlValidator {
 
     // Tenor — page URL or direct media URL
     if (host.contains('tenor.com')) {
-      return ValidationResult.valid(
+      return const ValidationResult.valid(
         platform: SourcePlatform.tenor,
         mediaType: null, // can't know without fetching the page
       );
@@ -131,10 +119,7 @@ class UrlValidator {
 
     // Giphy — page URL or direct media URL
     if (host.contains('giphy.com')) {
-      return ValidationResult.valid(
-        platform: SourcePlatform.giphy,
-        mediaType: null,
-      );
+      return const ValidationResult.valid(platform: SourcePlatform.giphy, mediaType: null);
     }
 
     // Discord — CDN URLs
@@ -142,10 +127,7 @@ class UrlValidator {
       if (uri.path.contains('/attachments/')) {
         // Try to detect media type from extension
         final ext = _extensionFromPath(uri.path);
-        return ValidationResult.valid(
-          platform: SourcePlatform.discord,
-          mediaType: MediaType.fromExtension(ext),
-        );
+        return ValidationResult.valid(platform: SourcePlatform.discord, mediaType: MediaType.fromExtension(ext));
       }
     }
 
@@ -154,19 +136,13 @@ class UrlValidator {
     if (ext.isNotEmpty) {
       final mediaType = MediaType.fromExtension(ext);
       if (mediaType != null) {
-        return ValidationResult.valid(
-          platform: SourcePlatform.direct,
-          mediaType: mediaType,
-        );
+        return ValidationResult.valid(platform: SourcePlatform.direct, mediaType: mediaType);
       }
     }
 
     // Unknown — could be a page URL we don't recognize, or a direct link
     // without a media extension. Allow it but flag as unknown.
-    return const ValidationResult.valid(
-      platform: SourcePlatform.unknown,
-      mediaType: null,
-    );
+    return const ValidationResult.valid(platform: SourcePlatform.unknown, mediaType: null);
   }
 
   /// Extract file extension from a URL path (e.g. '/foo/bar.gif' → '.gif').
@@ -242,8 +218,7 @@ class UrlNormalizer {
     // ─── Tenor ────────────────────────────────────────────────────────────
     // Page URL: tenor.com/view/{slug}-{id}
     if (RegExp(r'^https?://tenor\.com/view/').hasMatch(url)) {
-      return await _normalizeTenorPage(url) ??
-          _fallback(url, SourcePlatform.tenor);
+      return await _normalizeTenorPage(url) ?? _fallback(url, SourcePlatform.tenor);
     }
     // Direct media URL: media.tenor.com/...
     if (RegExp(r'^https?://media\.tenor\.com/').hasMatch(url)) {
@@ -259,8 +234,7 @@ class UrlNormalizer {
     // ─── Giphy ────────────────────────────────────────────────────────────
     // Page URL: giphy.com/gifs/{slug}-{id}
     if (RegExp(r'^https?://giphy\.com/gifs/').hasMatch(url)) {
-      return await _normalizeGiphyPage(url) ??
-          _fallback(url, SourcePlatform.giphy);
+      return await _normalizeGiphyPage(url) ?? _fallback(url, SourcePlatform.giphy);
     }
     // Direct media URL: media.giphy.com/media/{id}/...
     if (RegExp(r'^https?://media\d*\.giphy\.com/media/').hasMatch(url)) {
@@ -277,8 +251,7 @@ class UrlNormalizer {
     // cdn.discordapp.com/attachments/... or media.discordapp.net/attachments/...
     // These URLs may be signed/expiring — auto-pin so we download immediately.
     // Strip query parameters for dedup (cleaner). Keep full URL for download.
-    if (RegExp(r'^https?://(cdn\.discordapp\.com|media\.discordapp\.net)/attachments/')
-        .hasMatch(url)) {
+    if (RegExp(r'^https?://(cdn\.discordapp\.com|media\.discordapp\.net)/attachments/').hasMatch(url)) {
       final uri = Uri.parse(url);
       final cleanUrl = uri.origin + uri.path;
 
@@ -296,18 +269,14 @@ class UrlNormalizer {
     //          fixupx.com/{user}/status/{id}, fixvx.com/{user}/status/{id},
     //          vxtwitter.com/{user}/status/{id}
     // Uses the fxtwitter API to resolve to direct media URLs.
-    final twitterMatch = RegExp(
-      r'^https?://(?:www\.)?(?:fixup|fixv|vx)?(?:x|twitter)\.com/\w+/status/(\d+)',
-    ).firstMatch(url);
+    final twitterMatch = RegExp(r'^https?://(?:www\.)?(?:fixup|fixv|vx)?(?:x|twitter)\.com/\w+/status/(\d+)').firstMatch(url);
     if (twitterMatch != null) {
-      return await _normalizeTwitterUrl(url, twitterMatch.group(1)!) ??
-          _fallback(url, SourcePlatform.unknown);
+      return await _normalizeTwitterUrl(url, twitterMatch.group(1)!) ?? _fallback(url, SourcePlatform.unknown);
     }
 
     // ─── Direct media URLs ────────────────────────────────────────────────
     // Anything ending in a known media extension
-    if (RegExp(r'\.(gif|mp4|webp|png|jpg|jpeg|webm)(\?|$)', caseSensitive: false)
-        .hasMatch(url)) {
+    if (RegExp(r'\.(gif|mp4|webp|png|jpg|jpeg|webm)(\?|$)', caseSensitive: false).hasMatch(url)) {
       return NormalizedUrl(
         directUrl: url,
         pageUrl: null,
@@ -331,25 +300,19 @@ class UrlNormalizer {
   /// Fetch Tenor page HTML, extract og:image or og:video meta tag.
   Future<NormalizedUrl?> _normalizeTenorPage(String pageUrl) async {
     try {
-      final response = await _dio.get<String>(pageUrl,
-          options: Options(responseType: ResponseType.json));
+      final response = await _dio.get<String>(pageUrl, options: Options(responseType: ResponseType.json));
       final html = response.data;
       if (html == null) return null;
 
       final doc = html_parser.parse(html);
-      final ogImage = doc
-          .querySelector('meta[property="og:image"]')
-          ?.attributes['content'];
-      final ogVideo = doc
-          .querySelector('meta[property="og:video"]')
-          ?.attributes['content'];
+      final ogImage = doc.querySelector('meta[property="og:image"]')?.attributes['content'];
+      final ogVideo = doc.querySelector('meta[property="og:video"]')?.attributes['content'];
 
       final directUrl = ogVideo ?? ogImage;
       if (directUrl == null) return null;
 
       // Try to extract the Tenor ID from the page URL
-      final idMatch =
-          RegExp(r'tenor\.com/view/[^-]+-(\d+)').firstMatch(pageUrl);
+      final idMatch = RegExp(r'tenor\.com/view/[^-]+-(\d+)').firstMatch(pageUrl);
       final tenorId = idMatch?.group(1);
 
       return NormalizedUrl(
@@ -367,21 +330,17 @@ class UrlNormalizer {
   /// Fetch Giphy page HTML, extract og:image meta tag.
   Future<NormalizedUrl?> _normalizeGiphyPage(String pageUrl) async {
     try {
-      final response = await _dio.get<String>(pageUrl,
-          options: Options(responseType: ResponseType.json));
+      final response = await _dio.get<String>(pageUrl, options: Options(responseType: ResponseType.json));
       final html = response.data;
       if (html == null) return null;
 
       final doc = html_parser.parse(html);
-      final ogImage = doc
-          .querySelector('meta[property="og:image"]')
-          ?.attributes['content'];
+      final ogImage = doc.querySelector('meta[property="og:image"]')?.attributes['content'];
 
       if (ogImage == null) return null;
 
       // Extract Giphy ID from URL: giphy.com/gifs/{slug}-{id}
-      final idMatch =
-          RegExp(r'giphy\.com/gifs/(?:.*-)?([a-zA-Z0-9]+)$').firstMatch(pageUrl);
+      final idMatch = RegExp(r'giphy\.com/gifs/(?:.*-)?([a-zA-Z0-9]+)$').firstMatch(pageUrl);
       final giphyId = idMatch?.group(1);
 
       return NormalizedUrl(
@@ -400,12 +359,9 @@ class UrlNormalizer {
   ///
   /// Calls https://api.fxtwitter.com/status/{id}/en which returns JSON
   /// with media URLs (videos as MP4, GIFs as direct media URLs).
-  Future<NormalizedUrl?> _normalizeTwitterUrl(
-      String pageUrl, String statusId) async {
+  Future<NormalizedUrl?> _normalizeTwitterUrl(String pageUrl, String statusId) async {
     try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        'https://api.fxtwitter.com/status/$statusId/en',
-      );
+      final response = await _dio.get<Map<String, dynamic>>('https://api.fxtwitter.com/status/$statusId/en');
       final tweet = response.data?['tweet'] as Map<String, dynamic>?;
       if (tweet == null) return null;
 
@@ -428,7 +384,7 @@ class UrlNormalizer {
       if (directUrl == null) return null;
 
       // Also grab the tweet text for potential use as title
-      final text = tweet['text'] as String?;
+      // final text = tweet['text'] as String?;
 
       return NormalizedUrl(
         directUrl: directUrl,
@@ -482,14 +438,7 @@ class MediaInfo {
   final int fileSizeBytes;
   final bool isAnimated;
 
-  const MediaInfo({
-    this.mimeType,
-    this.width,
-    this.height,
-    this.duration,
-    required this.fileSizeBytes,
-    this.isAnimated = false,
-  });
+  const MediaInfo({this.mimeType, this.width, this.height, this.duration, required this.fileSizeBytes, this.isAnimated = false});
 }
 
 /// Wraps ffmpeg/ffprobe subprocess calls for thumbnail generation and probing.
@@ -511,21 +460,13 @@ class FfmpegWrapper {
     final whichCmd = Platform.isWindows ? 'where' : 'which';
 
     try {
-      final ffmpegResult =
-          await Process.run(whichCmd, ['ffmpeg'], runInShell: true);
+      final ffmpegResult = await Process.run(whichCmd, ['ffmpeg'], runInShell: true);
       if (ffmpegResult.exitCode != 0) return null;
-      final ffmpegPath = (ffmpegResult.stdout as String)
-          .split('\n')
-          .first
-          .trim();
+      final ffmpegPath = (ffmpegResult.stdout as String).split('\n').first.trim();
 
-      final ffprobeResult =
-          await Process.run(whichCmd, ['ffprobe'], runInShell: true);
+      final ffprobeResult = await Process.run(whichCmd, ['ffprobe'], runInShell: true);
       if (ffprobeResult.exitCode != 0) return null;
-      final ffprobePath = (ffprobeResult.stdout as String)
-          .split('\n')
-          .first
-          .trim();
+      final ffprobePath = (ffprobeResult.stdout as String).split('\n').first.trim();
 
       return FfmpegWrapper(ffmpegPath: ffmpegPath, ffprobePath: ffprobePath);
     } catch (_) {
@@ -534,27 +475,21 @@ class FfmpegWrapper {
   }
 
   /// Create an FfmpegWrapper from explicit paths (e.g. bundled binaries).
-  static FfmpegWrapper fromPaths({
-    required String ffmpegPath,
-    required String ffprobePath,
-  }) {
+  static FfmpegWrapper fromPaths({required String ffmpegPath, required String ffprobePath}) {
     return FfmpegWrapper(ffmpegPath: ffmpegPath, ffprobePath: ffprobePath);
   }
 
   /// Probe a media file for metadata (dimensions, mime, duration, animation).
   Future<MediaInfo> probe(String inputPath) async {
-    final result = await Process.run(
-      ffprobePath,
-      [
-        '-v', 'error', // show errors only (not quiet — we want to see failures)
-        '-analyzeduration', '10000000',
-        '-probesize', '10000000',
-        '-print_format', 'json',
-        '-show_streams',
-        '-show_format',
-        inputPath,
-      ],
-    );
+    final result = await Process.run(ffprobePath, [
+      '-v', 'error', // show errors only (not quiet — we want to see failures)
+      '-analyzeduration', '10000000',
+      '-probesize', '10000000',
+      '-print_format', 'json',
+      '-show_streams',
+      '-show_format',
+      inputPath,
+    ]);
 
     if (result.exitCode != 0) {
       print('[ffprobe] FAILED for $inputPath (exit ${result.exitCode}): ${result.stderr}');
@@ -594,8 +529,10 @@ class FfmpegWrapper {
       height = (stream['height'] as num?)?.toInt();
       duration = (stream['duration'] as num?)?.toInt();
 
-      print('[ffprobe] $inputPath: codec=$codecName, ${width}x$height, '
-          'nb_frames=${stream['nb_frames']}, duration=$duration');
+      print(
+        '[ffprobe] $inputPath: codec=$codecName, ${width}x$height, '
+        'nb_frames=${stream['nb_frames']}, duration=$duration',
+      );
 
       // Guess mime from codec
       if (codecName == 'gif') {
@@ -619,22 +556,17 @@ class FfmpegWrapper {
         isAnimated = true;
       }
     } else {
-      print('[ffprobe] $inputPath: no streams found. '
-          'streams=${streams?.length}, json keys=${json.keys.toList()}');
+      print(
+        '[ffprobe] $inputPath: no streams found. '
+        'streams=${streams?.length}, json keys=${json.keys.toList()}',
+      );
     }
 
     final fileSize = (format?['size'] as String?) != null
         ? int.tryParse(format!['size'] as String) ?? await File(inputPath).length()
         : await File(inputPath).length();
 
-    return MediaInfo(
-      mimeType: mimeType,
-      width: width,
-      height: height,
-      duration: duration,
-      fileSizeBytes: fileSize,
-      isAnimated: isAnimated,
-    );
+    return MediaInfo(mimeType: mimeType, width: width, height: height, duration: duration, fileSizeBytes: fileSize, isAnimated: isAnimated);
   }
 
   /// Generate a static WebP thumbnail from any input (image, gif, video).
@@ -653,23 +585,26 @@ class FfmpegWrapper {
       return;
     }
 
-    final result = await Process.run(
-      ffmpegPath,
-      [
-        '-y',
-        '-i', inputPath,
-        '-vframes', '1',
-        '-vf', 'scale=$maxWidth:-1',
-        '-c:v', 'libwebp',
-        '-quality', quality.toString(),
-        outputPath,
-      ],
-    );
+    final result = await Process.run(ffmpegPath, [
+      '-y',
+      '-i',
+      inputPath,
+      '-vframes',
+      '1',
+      '-vf',
+      'scale=$maxWidth:-1',
+      '-c:v',
+      'libwebp',
+      '-quality',
+      quality.toString(),
+      outputPath,
+    ]);
 
     if (result.exitCode != 0) {
       throw Exception(
-          'ffmpeg static thumbnail failed (exit ${result.exitCode}):\n'
-          'stderr: ${result.stderr}');
+        'ffmpeg static thumbnail failed (exit ${result.exitCode}):\n'
+        'stderr: ${result.stderr}',
+      );
     }
   }
 
@@ -677,23 +612,26 @@ class FfmpegWrapper {
   /// Imported lazily to avoid circular deps in core — the app provides this
   /// via a callback. For now, we shell out to a simple approach: try ffmpeg
   /// with -analyzeduration and -probesize increased.
-  Future<void> _generateStaticThumbnailViaImageLib(
-      String inputPath, String outputPath, int maxWidth) async {
+  Future<void> _generateStaticThumbnailViaImageLib(String inputPath, String outputPath, int maxWidth) async {
     // Try ffmpeg with increased probe settings first (sometimes helps)
-    final result = await Process.run(
-      ffmpegPath,
-      [
-        '-y',
-        '-analyzeduration', '10000000',
-        '-probesize', '10000000',
-        '-i', inputPath,
-        '-vframes', '1',
-        '-vf', 'scale=$maxWidth:-1',
-        '-c:v', 'libwebp',
-        '-quality', '80',
-        outputPath,
-      ],
-    );
+    final result = await Process.run(ffmpegPath, [
+      '-y',
+      '-analyzeduration',
+      '10000000',
+      '-probesize',
+      '10000000',
+      '-i',
+      inputPath,
+      '-vframes',
+      '1',
+      '-vf',
+      'scale=$maxWidth:-1',
+      '-c:v',
+      'libwebp',
+      '-quality',
+      '80',
+      outputPath,
+    ]);
 
     if (result.exitCode == 0) return;
 
@@ -725,23 +663,26 @@ class FfmpegWrapper {
       }
     }
 
-    final result = await Process.run(
-      ffmpegPath,
-      [
-        '-y',
-        '-i', inputPath,
-        '-vf', 'scale=$maxWidth:-1,fps=$fps',
-        '-c:v', 'libwebp',
-        '-loop', '0',
-        '-quality', quality.toString(),
-        outputPath,
-      ],
-    );
+    final result = await Process.run(ffmpegPath, [
+      '-y',
+      '-i',
+      inputPath,
+      '-vf',
+      'scale=$maxWidth:-1,fps=$fps',
+      '-c:v',
+      'libwebp',
+      '-loop',
+      '0',
+      '-quality',
+      quality.toString(),
+      outputPath,
+    ]);
 
     if (result.exitCode != 0) {
       throw Exception(
-          'ffmpeg animated thumbnail failed (exit ${result.exitCode}):\n'
-          'stderr: ${result.stderr}');
+        'ffmpeg animated thumbnail failed (exit ${result.exitCode}):\n'
+        'stderr: ${result.stderr}',
+      );
     }
   }
 }
@@ -753,17 +694,13 @@ class FfmpegWrapper {
 sealed class IngestEvent {}
 
 class IngestProgressEvent extends IngestEvent {
+  final String reactionUrl;
   final String reactionId;
   final ReactionStatus status;
   final double progress; // 0.0 – 1.0
   final Reaction? reaction; // full updated reaction (includes width/height/etc from download)
 
-  IngestProgressEvent({
-    required this.reactionId,
-    required this.status,
-    required this.progress,
-    this.reaction,
-  });
+  IngestProgressEvent({required this.reactionUrl, required this.reactionId, required this.status, required this.progress, this.reaction});
 }
 
 class IngestCompleteEvent extends IngestEvent {
@@ -777,11 +714,7 @@ class IngestFailedEvent extends IngestEvent {
   final String error;
   final Reaction? reaction; // the reaction with whatever data was collected before failure
 
-  IngestFailedEvent({
-    required this.reactionId,
-    required this.error,
-    this.reaction,
-  });
+  IngestFailedEvent({required this.reactionId, required this.error, this.reaction});
 }
 
 /// Configuration for the ingest pipeline.
@@ -863,23 +796,24 @@ class IngestPipeline {
       if (reaction.localFile == null) {
         print('[Ingest] ${reaction.id}: downloading...');
         reaction = reaction.copyWith(status: ReactionStatus.downloading, progress: 0.0);
-        yield IngestProgressEvent(
-            reactionId: reaction.id,
-            status: reaction.status,
-            progress: reaction.progress);
+        yield IngestProgressEvent(reactionUrl: reaction.url, reactionId: reaction.id, status: reaction.status, progress: reaction.progress);
 
         final downloadResult = await _download(reaction);
         reaction = downloadResult.reaction;
         downloadLocalPath = downloadResult.localPath;
         downloadMediaInfo = downloadResult.mediaInfo;
-        print('[Ingest] ${reaction.id}: downloaded ${reaction.fileSizeBytes} bytes, '
-            '${reaction.width}x${reaction.height}, mime=${reaction.mimeType}, '
-            'animated=${downloadMediaInfo.isAnimated}');
+        print(
+          '[Ingest] ${reaction.id}: downloaded ${reaction.fileSizeBytes} bytes, '
+          '${reaction.width}x${reaction.height}, mime=${reaction.mimeType}, '
+          'animated=${downloadMediaInfo.isAnimated}',
+        );
         yield IngestProgressEvent(
-            reactionId: reaction.id,
-            status: reaction.status,
-            progress: 0.4,
-            reaction: reaction);
+          reactionUrl: reaction.url,
+          reactionId: reaction.id,
+          status: reaction.status,
+          progress: 0.4,
+          reaction: reaction,
+        );
       } else {
         print('[Ingest] ${reaction.id}: already downloaded, skipping download');
         downloadLocalPath = p.join(storage.rootPath, reaction.localFile!);
@@ -899,20 +833,21 @@ class IngestPipeline {
         print('[Ingest] ${reaction.id}: generating thumbnail...');
         reaction = reaction.copyWith(status: ReactionStatus.thumbnailing, progress: 0.5);
         yield IngestProgressEvent(
-            reactionId: reaction.id,
-            status: reaction.status,
-            progress: reaction.progress,
-            reaction: reaction);
+          reactionUrl: reaction.url,
+          reactionId: reaction.id,
+          status: reaction.status,
+          progress: reaction.progress,
+          reaction: reaction,
+        );
 
         await _generateThumbnails(reaction, downloadLocalPath);
 
         final staticThumbPath = storage.thumbnailStaticPath(reaction.id);
-        reaction = reaction.copyWith(
-          thumbnailStatic: p.relative(staticThumbPath, from: storage.rootPath),
-        );
+        reaction = reaction.copyWith(thumbnailStatic: p.relative(staticThumbPath, from: storage.rootPath));
 
         // Check if the source is inherently animated
-        final isLikelyAnimated = downloadMediaInfo.isAnimated ||
+        final isLikelyAnimated =
+            downloadMediaInfo.isAnimated ||
             reaction.mimeType == 'image/gif' ||
             reaction.mimeType == 'image/webp' ||
             reaction.mimeType == 'video/mp4' ||
@@ -924,16 +859,16 @@ class IngestPipeline {
 
         if (config.animatedPreviewsEnabled && isLikelyAnimated) {
           final animThumbPath = storage.thumbnailAnimatedPath(reaction.id);
-          reaction = reaction.copyWith(
-            thumbnailAnimated: p.relative(animThumbPath, from: storage.rootPath),
-          );
+          reaction = reaction.copyWith(thumbnailAnimated: p.relative(animThumbPath, from: storage.rootPath));
         }
         print('[Ingest] ${reaction.id}: thumbnail ready at ${reaction.thumbnailStatic}');
         yield IngestProgressEvent(
-            reactionId: reaction.id,
-            status: reaction.status,
-            progress: 0.6,
-            reaction: reaction);
+          reactionUrl: reaction.url,
+          reactionId: reaction.id,
+          status: reaction.status,
+          progress: 0.6,
+          reaction: reaction,
+        );
       } else {
         print('[Ingest] ${reaction.id}: thumbnail already exists, skipping');
       }
@@ -942,16 +877,17 @@ class IngestPipeline {
       print('[Ingest] ${reaction.id}: text embedding...');
       reaction = reaction.copyWith(status: ReactionStatus.embedding, progress: 0.65);
       yield IngestProgressEvent(
-          reactionId: reaction.id,
-          status: reaction.status,
-          progress: reaction.progress,
-          reaction: reaction);
+        reactionUrl: reaction.url,
+        reactionId: reaction.id,
+        status: reaction.status,
+        progress: reaction.progress,
+        reaction: reaction,
+      );
 
       final embeddableText = reaction.embeddableText;
       if (embeddableText.isNotEmpty) {
         final textVec = await textEmbedder.embed(embeddableText);
-        final vecPath =
-            storage.textEmbeddingPath(reaction.id, 'clip-vit-b32-fp16', config.textModelVersion);
+        final vecPath = storage.textEmbeddingPath(reaction.id, 'clip-vit-b32-fp16', config.textModelVersion);
         await writeVectorFile(vecPath, textVec);
         reaction = reaction.copyWith(
           textEmbeddingPath: p.relative(vecPath, from: storage.rootPath),
@@ -961,10 +897,7 @@ class IngestPipeline {
       } else {
         print('[Ingest] ${reaction.id}: no text to embed (no title/tags/ocr)');
       }
-      yield IngestProgressEvent(
-          reactionId: reaction.id,
-          status: reaction.status,
-          progress: 0.75);
+      yield IngestProgressEvent(reactionUrl: reaction.url, reactionId: reaction.id, status: reaction.status, progress: 0.75);
 
       // ─── Stage 4: Image embedding ──────────────────────────────────────
       print('[Ingest] ${reaction.id}: image embedding...');
@@ -973,8 +906,7 @@ class IngestPipeline {
           await imageEmbedder!.init();
           final thumbAbsPath = p.join(storage.rootPath, reaction.thumbnailStatic!);
           final imageVec = await imageEmbedder!.embedFile(thumbAbsPath);
-          final vecPath = storage.imageEmbeddingPath(
-              reaction.id, 'clip-vit-b32-fp16', config.imageModelVersion);
+          final vecPath = storage.imageEmbeddingPath(reaction.id, 'clip-vit-b32-fp16', config.imageModelVersion);
           await writeVectorFile(vecPath, imageVec);
           reaction = reaction.copyWith(
             imageEmbeddingPath: p.relative(vecPath, from: storage.rootPath),
@@ -986,20 +918,24 @@ class IngestPipeline {
         }
       }
       yield IngestProgressEvent(
-          reactionId: reaction.id,
-          status: reaction.status,
-          progress: 0.85,
-          reaction: reaction);
+        reactionUrl: reaction.url,
+        reactionId: reaction.id,
+        status: reaction.status,
+        progress: 0.85,
+        reaction: reaction,
+      );
 
       // ─── Stage 5: OCR (optional) ───────────────────────────────────────
       if (config.ocrEnabled && config.ocrIsolateCallback != null) {
         print('[Ingest] ${reaction.id}: OCR...');
         reaction = reaction.copyWith(status: ReactionStatus.ocr, progress: 0.9);
         yield IngestProgressEvent(
-            reactionId: reaction.id,
-            status: reaction.status,
-            progress: reaction.progress,
-            reaction: reaction);
+          reactionUrl: reaction.url,
+          reactionId: reaction.id,
+          status: reaction.status,
+          progress: reaction.progress,
+          reaction: reaction,
+        );
 
         try {
           final thumbAbsPath = p.join(storage.rootPath, reaction.thumbnailStatic!);
@@ -1008,17 +944,13 @@ class IngestPipeline {
           if (ocrText != null && ocrText.isNotEmpty) {
             final ocrPath = storage.ocrPath(reaction.id);
             await File(ocrPath).writeAsString(ocrText, flush: true);
-            reaction = reaction.copyWith(
-              ocrText: ocrText,
-              ocrModelVersion: config.ocrModelVersion,
-            );
+            reaction = reaction.copyWith(ocrText: ocrText, ocrModelVersion: config.ocrModelVersion);
             print('[Ingest] ${reaction.id}: OCR text: "${ocrText.substring(0, ocrText.length > 50 ? 50 : ocrText.length)}..."');
 
             final enrichedText = reaction.embeddableText;
             if (enrichedText.isNotEmpty) {
               final textVec = await textEmbedder.embed(enrichedText);
-              final vecPath = storage.textEmbeddingPath(
-                  reaction.id, 'clip-vit-b32-fp16', config.textModelVersion);
+              final vecPath = storage.textEmbeddingPath(reaction.id, 'clip-vit-b32-fp16', config.textModelVersion);
               await writeVectorFile(vecPath, textVec);
             }
           } else {
@@ -1034,24 +966,17 @@ class IngestPipeline {
       }
 
       // ─── Stage 6: Done ──────────────────────────────────────────────────
-      reaction = reaction.copyWith(
-          status: ReactionStatus.ready, progress: 1.0);
+      reaction = reaction.copyWith(status: ReactionStatus.ready, progress: 1.0);
       print('[Ingest] ${reaction.id}: pipeline complete ✓');
       yield IngestCompleteEvent(reaction);
     } catch (e) {
-      reaction = reaction.copyWith(
-          status: ReactionStatus.failed,
-          errorMessage: e.toString());
-      yield IngestFailedEvent(
-          reactionId: reaction.id,
-          error: e.toString(),
-          reaction: reaction);
+      reaction = reaction.copyWith(status: ReactionStatus.failed, errorMessage: e.toString());
+      yield IngestFailedEvent(reactionId: reaction.id, error: e.toString(), reaction: reaction);
     }
   }
 
   /// Download the reaction's URL to disk.
-  Future<({Reaction reaction, String localPath, MediaInfo mediaInfo})>
-      _download(Reaction reaction) async {
+  Future<({Reaction reaction, String localPath, MediaInfo mediaInfo})> _download(Reaction reaction) async {
     final extension = _guessExtension(reaction.url);
     final downloadPath = storage.downloadPath(reaction.id, extension);
     await Directory(p.dirname(downloadPath)).create(recursive: true);
@@ -1066,9 +991,7 @@ class IngestPipeline {
           followRedirects: true,
           maxRedirects: 5,
           receiveTimeout: const Duration(seconds: 30),
-          headers: {
-            'User-Agent': 'ReactionRoulette/0.1',
-          },
+          headers: {'User-Agent': 'ReactionRoulette/0.1'},
         ),
       );
     } catch (e) {
@@ -1121,10 +1044,7 @@ class IngestPipeline {
 
     await Directory(storage.thumbnailsStaticDir).create(recursive: true);
     final staticPath = storage.thumbnailStaticPath(reaction.id);
-    await ffmpeg!.generateStaticThumbnail(
-      inputPath: localPath,
-      outputPath: staticPath,
-    );
+    await ffmpeg!.generateStaticThumbnail(inputPath: localPath, outputPath: staticPath);
 
     if (config.animatedPreviewsEnabled) {
       // Only generate animated thumbnail if the source is animated
@@ -1133,10 +1053,7 @@ class IngestPipeline {
       try {
         await Directory(storage.thumbnailsAnimatedDir).create(recursive: true);
         final animPath = storage.thumbnailAnimatedPath(reaction.id);
-        await ffmpeg!.generateAnimatedThumbnail(
-          inputPath: localPath,
-          outputPath: animPath,
-        );
+        await ffmpeg!.generateAnimatedThumbnail(inputPath: localPath, outputPath: animPath);
       } catch (_) {
         // Animated thumbnail failure is non-fatal
       }
@@ -1161,19 +1078,12 @@ class ReactionFactory {
   final UrlNormalizer _normalizer;
   final Uuid _uuid;
 
-  ReactionFactory({UrlNormalizer? normalizer, Uuid? uuid})
-      : _normalizer = normalizer ?? UrlNormalizer(),
-        _uuid = uuid ?? const Uuid();
+  ReactionFactory({UrlNormalizer? normalizer, Uuid? uuid}) : _normalizer = normalizer ?? UrlNormalizer(), _uuid = uuid ?? const Uuid();
 
   /// Create a new Reaction from a URL.
   ///
   /// Returns null if the URL is a duplicate (already in metadata).
-  Future<Reaction?> create({
-    required String url,
-    String? title,
-    List<String>? tags,
-    required List<Reaction> existingReactions,
-  }) async {
+  Future<Reaction?> create({required String url, String? title, List<String>? tags, required List<Reaction> existingReactions}) async {
     final normalized = await _normalizer.normalize(url);
 
     // Dedup check

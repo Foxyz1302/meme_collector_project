@@ -164,7 +164,7 @@ class PpocrEngine implements OcrEngine {
     inputTensor.release();
     runOptions.release();
 
-    if (outputs == null || outputs.isEmpty || outputs.first == null) return [];
+    if (outputs.isEmpty || outputs.first == null) return [];
 
     // Output is [1, 1, 960, 960] probability map
     final outputValue = outputs.first!.value;
@@ -255,7 +255,7 @@ class PpocrEngine implements OcrEngine {
   // ─── Recognition ───────────────────────────────────────────────────────
 
   /// Run the recognition model on a cropped text region.
-  /// 
+  ///
   /// PaddleOCR preprocessing (from resize_norm_img in rec_img_aug.py):
   /// 1. Resize: height=48, width=maintain aspect ratio (cap at 320)
   /// 2. Convert to CHW, BGR channel order (OpenCV default)
@@ -264,23 +264,21 @@ class PpocrEngine implements OcrEngine {
   Future<String> _recognize(img.Image crop) async {
     final cropH = crop.height;
     final cropW = crop.width;
-    
+
     // Calculate resize width maintaining aspect ratio
     final ratio = cropW / cropH.toDouble();
     var resizedW = (ratio * _recHeight).ceil();
     if (resizedW > _recWidth) resizedW = _recWidth;
     if (resizedW < 1) resizedW = 1;
-    
+
     // Resize: height=48, width=resizedW (maintains aspect ratio)
-    final resized = img.copyResize(crop,
-        width: resizedW, height: _recHeight,
-        interpolation: img.Interpolation.linear);
-    
+    final resized = img.copyResize(crop, width: resizedW, height: _recHeight, interpolation: img.Interpolation.linear);
+
     // Build NCHW Float32List directly — BGR order, normalized to [-1,1],
     // padded with 0.0 (gray in normalized space) to full 320 width.
     // PaddleOCR uses cv2 (BGR), so we swap R and B channels.
     final input = Float32List(3 * _recHeight * _recWidth); // all 0.0 = gray padding
-    
+
     for (var y = 0; y < _recHeight; y++) {
       for (var x = 0; x < resizedW; x++) {
         final pixel = resized.getPixel(x, y);
@@ -303,7 +301,7 @@ class PpocrEngine implements OcrEngine {
     inputTensor.release();
     runOptions.release();
 
-    if (outputs == null || outputs.isEmpty || outputs.first == null) return '';
+    if (outputs.isEmpty || outputs.first == null) return '';
 
     final outputValue = outputs.first!.value;
     outputs.first!.release();
@@ -362,39 +360,6 @@ class PpocrEngine implements OcrEngine {
     final w = (box.x2 - box.x1).ceil().clamp(1, image.width - x);
     final h = (box.y2 - box.y1).ceil().clamp(1, image.height - y);
     return img.copyCrop(image, x: x, y: y, width: w, height: h);
-  }
-
-  /// Convert image to NCHW Float32List for ONNX input.
-  /// For detection: normalize to [0, 1] (divide by 255)
-  /// For recognition: normalize to [-1, 1] ((x/255 - 0.5) / 0.5)
-  Float32List _imageToNchw(img.Image image, int width, int height, {bool normalize = false, bool toNegOne = false}) {
-    final pixelValues = Float32List(3 * height * width);
-    for (var y = 0; y < height; y++) {
-      for (var x = 0; x < width; x++) {
-        final pixel = image.getPixel(x, y);
-        double r, g, b;
-        if (toNegOne) {
-          // PP-OCR recognition: normalize to [-1, 1]
-          r = (pixel.rNormalized.toDouble() - 0.5) / 0.5;
-          g = (pixel.gNormalized.toDouble() - 0.5) / 0.5;
-          b = (pixel.bNormalized.toDouble() - 0.5) / 0.5;
-        } else if (normalize) {
-          // Detection: normalize to [0, 1]
-          r = pixel.rNormalized.toDouble();
-          g = pixel.gNormalized.toDouble();
-          b = pixel.bNormalized.toDouble();
-        } else {
-          r = pixel.r / 255.0;
-          g = pixel.g / 255.0;
-          b = pixel.b / 255.0;
-        }
-        final idx = y * width + x;
-        pixelValues[0 * height * width + idx] = r;
-        pixelValues[1 * height * width + idx] = g;
-        pixelValues[2 * height * width + idx] = b;
-      }
-    }
-    return pixelValues;
   }
 
   /// Recursively flatten nested lists.

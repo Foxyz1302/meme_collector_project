@@ -31,22 +31,13 @@ final _downloads = <_Download>[
     dest: 'potion-base-32M/model.safetensors',
     expectedSizeBytes: 130 * 1024 * 1024, // ~130 MB
   ),
-  _Download(
-    url: '$_hfBase/minishlab/potion-base-32M/resolve/main/tokenizer.json',
-    dest: 'potion-base-32M/tokenizer.json',
-  ),
-  _Download(
-    url: '$_hfBase/minishlab/potion-base-32M/resolve/main/tokenizer_config.json',
-    dest: 'potion-base-32M/tokenizer_config.json',
-  ),
+  _Download(url: '$_hfBase/minishlab/potion-base-32M/resolve/main/tokenizer.json', dest: 'potion-base-32M/tokenizer.json'),
+  _Download(url: '$_hfBase/minishlab/potion-base-32M/resolve/main/tokenizer_config.json', dest: 'potion-base-32M/tokenizer_config.json'),
   _Download(
     url: '$_hfBase/minishlab/potion-base-32M/resolve/main/special_tokens_map.json',
     dest: 'potion-base-32M/special_tokens_map.json',
   ),
-  _Download(
-    url: '$_hfBase/minishlab/potion-base-32M/resolve/main/config.json',
-    dest: 'potion-base-32M/config.json',
-  ),
+  _Download(url: '$_hfBase/minishlab/potion-base-32M/resolve/main/config.json', dest: 'potion-base-32M/config.json'),
 
   // ─── CLIP ViT-B/32 (Xenova split towers, FP16 for GPU) ──────────────────
   // FP16 is the right quantization for GPU:
@@ -70,10 +61,7 @@ final _downloads = <_Download>[
     dest: 'clip_vision_fp16.onnx',
     expectedSizeBytes: 176 * 1024 * 1024,
   ),
-  _Download(
-    url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/tokenizer.json',
-    dest: 'clip_tokenizer.json',
-  ),
+  _Download(url: '$_hfBase/Xenova/clip-vit-base-patch32/resolve/main/tokenizer.json', dest: 'clip_tokenizer.json'),
 
   // ─── PP-OCRv5 (monkt/paddleocr-onnx) ───────────────────────────────────
   _Download(
@@ -88,10 +76,7 @@ final _downloads = <_Download>[
     expectedSizeBytes: 7 * 1024 * 1024,
   ),
   // English character dictionary — lives next to rec.onnx
-  _Download(
-    url: '$_hfBase/monkt/paddleocr-onnx/resolve/main/languages/english/dict.txt',
-    dest: 'ppocr_dict.txt',
-  ),
+  _Download(url: '$_hfBase/monkt/paddleocr-onnx/resolve/main/languages/english/dict.txt', dest: 'ppocr_dict.txt'),
 ];
 
 // No fallbacks needed — paths verified from the monkt README:
@@ -104,12 +89,7 @@ class _Download {
   final int? expectedSizeBytes;
   final bool optional;
 
-  const _Download({
-    required this.url,
-    required this.dest,
-    this.expectedSizeBytes,
-    this.optional = false,
-  });
+  const _Download({required this.url, required this.dest, this.expectedSizeBytes}) : optional = false;
 }
 
 Future<void> main() async {
@@ -173,8 +153,7 @@ Future<void> main() async {
   // Print final size
   try {
     var totalSize = 0;
-    await for (final entry
-        in Directory(destRoot).list(recursive: true, followLinks: false)) {
+    await for (final entry in Directory(destRoot).list(recursive: true, followLinks: false)) {
       if (entry is File) {
         totalSize += await entry.length();
       }

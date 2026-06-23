@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
-import 'package:meme_collector_core/worker.dart';
 import 'package:signals_flutter/signals_flutter.dart';
 import '../state/signals.dart';
 
@@ -30,7 +29,7 @@ class AppSidebar extends StatelessWidget {
             child: Row(
               spacing: 10,
               children: [
-                FAvatar.raw(child: Icon(FLucideIcons.userRound, size: 18, color: colors.mutedForeground)),
+                // FAvatar.raw(child: Icon(FLucideIcons.userRound, size: 18, color: colors.mutedForeground)),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,64 +105,65 @@ class AppSidebar extends StatelessWidget {
         ),
 
         // ─── Library ────────────────────────────────────────────────────
-        FSidebarGroup(
-          label: const Text('Library'),
-          children: [
-            FSidebarItem(
-              icon: const Icon(FLucideIcons.layoutGrid),
-              label: const Text('All'),
-              selected: selected == 'all',
-              onPress: () => selectedNav.value = 'all',
-            ),
-            FSidebarItem(
-              icon: const Icon(FLucideIcons.clock),
-              label: const Text('Recently Used'),
-              selected: selected == 'recent',
-              onPress: () => selectedNav.value = 'recent',
-            ),
-            FSidebarItem(
-              icon: const Icon(FLucideIcons.tags),
-              label: const Text('Tags'),
-              selected: selected == 'tags',
-              onPress: () => selectedNav.value = 'tags',
-            ),
-            FSidebarItem(
-              icon: const Icon(FLucideIcons.link),
-              label: const Text('Sources'),
-              selected: selected == 'sources',
-              onPress: () => selectedNav.value = 'sources',
-            ),
-          ],
-        ),
+        // FSidebarGroup(
+        //   label: const Text('Library'),
+        //   children: [
+        //     FSidebarItem(
+        //       icon: const Icon(FLucideIcons.layoutGrid),
+        //       label: const Text('All'),
+        //       selected: selected == 'all',
+        //       onPress: () => selectedNav.value = 'all',
+        //     ),
+        //     FSidebarItem(
+        //       icon: const Icon(FLucideIcons.clock),
+        //       label: const Text('Recently Used'),
+        //       selected: selected == 'recent',
+        //       onPress: () => selectedNav.value = 'recent',
+        //     ),
+        //     FSidebarItem(
+        //       icon: const Icon(FLucideIcons.tags),
+        //       label: const Text('Tags'),
+        //       selected: selected == 'tags',
+        //       onPress: () => selectedNav.value = 'tags',
+        //     ),
+        //     FSidebarItem(
+        //       icon: const Icon(FLucideIcons.link),
+        //       label: const Text('Sources'),
+        //       selected: selected == 'sources',
+        //       onPress: () => selectedNav.value = 'sources',
+        //     ),
+        //   ],
+        // ),
 
         // ─── Add ────────────────────────────────────────────────────────
-        FSidebarGroup(
-          label: const Text('Add'),
-          action: const Icon(FLucideIcons.plus),
-          onActionPress: () {
-            // TODO: open import dialog (paste URL / pick file)
-          },
-          children: [
-            FSidebarItem(
-              icon: const Icon(FLucideIcons.clipboardPaste),
-              label: const Text('Paste link'),
-              onPress: () async {
-                final result = (await Clipboard.getData('text/plain'))?.text;
-                if (result == null) {
-                  return;
-                }
-                await addReaction(result.trim());
-              },
-            ),
-            FSidebarItem(
-              icon: const Icon(FLucideIcons.fileUp),
-              label: const Text('Import file'),
-              onPress: () {
-                // TODO: file_picker -> copy into library dir
-              },
-            ),
-          ],
-        ),
+        // FSidebarGroup(
+        //   label: const Text('Add'),
+        //   action: const Icon(FLucideIcons.plus),
+        //   onActionPress: () {
+        //     // TODO: open import dialog (paste URL / pick file)
+        //   },
+        //   children: [
+        //     FSidebarItem(
+        //       icon: const Icon(FLucideIcons.clipboardPaste),
+        //       label: const Text('Paste link'),
+        //       onPress: () async {
+        //         final result = (await Clipboard.getData('text/plain'))?.text;
+        //         if (result == null) {
+        //           return;
+        //         }
+        //         await addReaction(result.trim());
+        //       },
+        //     ),
+        //     FSidebarItem(
+        //       icon: const Icon(FLucideIcons.fileUp),
+        //       label: const Text('Import file'),
+
+        //       onPress: () {
+        //         // TODO: file_picker -> copy into library dir
+        //       },
+        //     ),
+        //   ],
+        // ),
 
         // ─── Maintenance ────────────────────────────────────────────────
         FSidebarGroup(

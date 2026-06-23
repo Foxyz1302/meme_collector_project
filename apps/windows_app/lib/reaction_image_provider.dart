@@ -22,8 +22,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
-import 'package:meme_collector_core/meme_collector_core.dart';
-
 @immutable
 class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
   final String reactionId;

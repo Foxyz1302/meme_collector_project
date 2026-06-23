@@ -48,12 +48,7 @@ class SearchRequest extends WorkerMessage {
   final Float32List? textQueryVec; // model2vec embedding (may be null if embedder fails)
   final Float32List? clipQueryVec; // CLIP text embedding (optional, for image search)
 
-  SearchRequest({
-    required this.query,
-    required this.topK,
-    this.textQueryVec,
-    this.clipQueryVec,
-  });
+  SearchRequest({required this.query, required this.topK, this.textQueryVec, this.clipQueryVec});
 }
 
 class HotlistRequest extends WorkerMessage {
@@ -82,11 +77,7 @@ class VectorIndexRebuild extends WorkerMessage {
   final String storageRootPath;
   final String activeTextVersion;
   final String activeImageVersion;
-  VectorIndexRebuild({
-    required this.storageRootPath,
-    required this.activeTextVersion,
-    required this.activeImageVersion,
-  });
+  VectorIndexRebuild({required this.storageRootPath, required this.activeTextVersion, required this.activeImageVersion});
 }
 
 // Search isolate → Main
@@ -115,14 +106,11 @@ class IngestShutdown extends WorkerMessage {}
 
 // Ingest isolate → Main
 class IngestProgressMsg extends WorkerMessage {
+  final String reactionUrl;
   final String reactionId;
   final ReactionStatus status;
   final double progress;
-  IngestProgressMsg({
-    required this.reactionId,
-    required this.status,
-    required this.progress,
-  });
+  IngestProgressMsg({required this.reactionUrl, required this.reactionId, required this.status, required this.progress});
 }
 
 class IngestCompleteMsg extends WorkerMessage {
@@ -131,9 +119,10 @@ class IngestCompleteMsg extends WorkerMessage {
 }
 
 class IngestFailedMsg extends WorkerMessage {
+  final String reactionUrl;
   final String reactionId;
   final String error;
-  IngestFailedMsg({required this.reactionId, required this.error});
+  IngestFailedMsg({required this.reactionUrl, required this.reactionId, required this.error});
 }
 
 // ─── Coordinator ────────────────────────────────────────────────────────────
@@ -243,11 +232,13 @@ class Coordinator {
     _debugPrint('Coordinator: search isolate spawned');
 
     // Tell search isolate to load the vector index
-    _searchIso!.send(VectorIndexRebuild(
-      storageRootPath: _storage.rootPath,
-      activeTextVersion: config.activeTextModelVersion,
-      activeImageVersion: config.activeImageModelVersion,
-    ));
+    _searchIso!.send(
+      VectorIndexRebuild(
+        storageRootPath: _storage.rootPath,
+        activeTextVersion: config.activeTextModelVersion,
+        activeImageVersion: config.activeImageModelVersion,
+      ),
+    );
     _debugPrint('Coordinator: search isolate loading vectors');
 
     // NOTE: Ingest pipeline runs in the main isolate (no separate ingest
@@ -276,14 +267,9 @@ class Coordinator {
   /// Re-queue reactions that were mid-ingest when the app last closed.
   void _requeueIncomplete() {
     for (final r in _metadata.reactions) {
-      if (r.status != ReactionStatus.ready &&
-          r.status != ReactionStatus.failed) {
+      if (r.status != ReactionStatus.ready && r.status != ReactionStatus.failed) {
         // Reset to queued and re-ingest
-        final reset = r.copyWith(
-          status: ReactionStatus.queued,
-          progress: 0.0,
-          errorMessage: null,
-        );
+        final reset = r.copyWith(status: ReactionStatus.queued, progress: 0.0, errorMessage: null);
         _updateReaction(reset);
         _runIngest(reset);
       }
@@ -311,11 +297,9 @@ class Coordinator {
               }
             }
             _scheduleSave();
-            _progressController.add(IngestProgressMsg(
-              reactionId: reactionId,
-              status: status,
-              progress: progress,
-            ));
+            _progressController.add(
+              IngestProgressMsg(reactionUrl: reaction!.url, reactionId: reactionId, status: status, progress: progress),
+            );
           case IngestCompleteEvent(:final reaction):
             _updateReaction(reaction);
             _scheduleSave();
@@ -335,14 +319,11 @@ class Coordinator {
             } else {
               final r = _metadata.byId(reactionId);
               if (r != null) {
-                _updateReaction(r.copyWith(
-                  status: ReactionStatus.failed,
-                  errorMessage: error,
-                ));
+                _updateReaction(r.copyWith(status: ReactionStatus.failed, errorMessage: error));
               }
             }
             _scheduleSave();
-            _failedController.add(IngestFailedMsg(reactionId: reactionId, error: error));
+            _failedController.add(IngestFailedMsg(reactionUrl: reaction!.url, reactionId: reactionId, error: error));
         }
       }
     }();
@@ -383,12 +364,7 @@ class Coordinator {
     final completer = Completer<List<SearchResult>>();
     _pendingSearches.add(completer);
 
-    _searchIso?.send(SearchRequest(
-      query: query,
-      topK: topK,
-      textQueryVec: textVec,
-      clipQueryVec: clipVec,
-    ));
+    _searchIso?.send(SearchRequest(query: query, topK: topK, textQueryVec: textVec, clipQueryVec: clipVec));
 
     return completer.future;
   }
@@ -404,18 +380,9 @@ class Coordinator {
   /// Add a new reaction from a URL.
   ///
   /// Returns the created Reaction, or null if the URL is a duplicate.
-  Future<Reaction?> addReaction({
-    required String url,
-    String? title,
-    List<String>? tags,
-  }) async {
+  Future<Reaction?> addReaction({required String url, String? title, List<String>? tags}) async {
     final factory = ReactionFactory();
-    final reaction = await factory.create(
-      url: url,
-      title: title,
-      tags: tags,
-      existingReactions: _metadata.reactions,
-    );
+    final reaction = await factory.create(url: url, title: title, tags: tags, existingReactions: _metadata.reactions);
 
     if (reaction == null) return null; // duplicate
 
@@ -432,14 +399,11 @@ class Coordinator {
       () async {
         try {
           final textVec = await _queryEmbedder.embed(reaction.embeddableText);
-          final vecPath = _storage.textEmbeddingPath(
-              reaction.id, 'clip-vit-b32-fp16', config.activeTextModelVersion);
+          final vecPath = _storage.textEmbeddingPath(reaction.id, 'clip-vit-b32-fp16', config.activeTextModelVersion);
           await writeVectorFile(vecPath, textVec);
 
           final updated = reaction.copyWith(
-            textEmbeddingPath: vecPath
-                .substring(_storage.rootPath.length + 1)
-                .replaceAll('\\', '/'),
+            textEmbeddingPath: vecPath.substring(_storage.rootPath.length + 1).replaceAll('\\', '/'),
             textModelVersion: config.activeTextModelVersion,
           );
           _updateReaction(updated);
@@ -460,8 +424,7 @@ class Coordinator {
     if (reaction == null) return;
 
     // Remove from metadata
-    _metadata = _metadata.copyWith(
-        reactions: _metadata.reactions.where((r) => r.id != id).toList());
+    _metadata = _metadata.copyWith(reactions: _metadata.reactions.where((r) => r.id != id).toList());
     _scheduleSave();
 
     // Tell search isolate to remove from index
@@ -476,21 +439,13 @@ class Coordinator {
     final reaction = _metadata.byId(id);
     if (reaction == null) return;
 
-    final updated = reaction.copyWith(
-      usageCount: reaction.usageCount + 1,
-      lastUsedAt: DateTime.now(),
-    );
+    final updated = reaction.copyWith(usageCount: reaction.usageCount + 1, lastUsedAt: DateTime.now());
     _updateReaction(updated);
     _scheduleSave();
   }
 
   /// Update a reaction's metadata (title, tags, notes).
-  Future<void> updateMetadata(
-    String id, {
-    String? title,
-    List<String>? tags,
-    String? notes,
-  }) async {
+  Future<void> updateMetadata(String id, {String? title, List<String>? tags, String? notes}) async {
     final reaction = _metadata.byId(id);
     if (reaction == null) return;
 
@@ -505,8 +460,7 @@ class Coordinator {
     if (title != null || tags != null) {
       try {
         final textVec = await _queryEmbedder.embed(updated.embeddableText);
-        final vecPath = _storage.textEmbeddingPath(
-            id, 'clip-vit-b32-fp16', config.activeTextModelVersion);
+        final vecPath = _storage.textEmbeddingPath(id, 'clip-vit-b32-fp16', config.activeTextModelVersion);
         await writeVectorFile(vecPath, textVec);
         _searchIso?.send(VectorIndexAddText(id, textVec));
       } catch (_) {
@@ -523,28 +477,18 @@ class Coordinator {
     if (_ingestImageEmbedder == null) return;
 
     // Set status to "Embedding…" on the tile
-    _progressController.add(IngestProgressMsg(
-      reactionId: id,
-      status: ReactionStatus.embedding,
-      progress: 0.0,
-    ));
-    _progressController.add(IngestProgressMsg(
-      reactionId: id,
-      status: ReactionStatus.embedding,
-      progress: 0.5,
-    ));
+    _progressController.add(IngestProgressMsg(reactionUrl: reaction.url, reactionId: id, status: ReactionStatus.embedding, progress: 0.0));
+    _progressController.add(IngestProgressMsg(reactionUrl: reaction.url, reactionId: id, status: ReactionStatus.embedding, progress: 0.5));
 
     try {
-      await _ingestImageEmbedder!.init();
+      await _ingestImageEmbedder.init();
       final thumbAbsPath = resolvePath(reaction.thumbnailStatic!);
-      final imageVec = await _ingestImageEmbedder!.embedFile(thumbAbsPath);
-      final vecPath = _storage.imageEmbeddingPath(
-          id, 'clip-vit-b32-fp16', config.activeImageModelVersion);
+      final imageVec = await _ingestImageEmbedder.embedFile(thumbAbsPath);
+      final vecPath = _storage.imageEmbeddingPath(id, 'clip-vit-b32-fp16', config.activeImageModelVersion);
       await writeVectorFile(vecPath, imageVec);
 
       final updated = reaction.copyWith(
-        imageEmbeddingPath: p.relative(vecPath, from: _storage.rootPath)
-            .replaceAll('\\', '/'),
+        imageEmbeddingPath: p.relative(vecPath, from: _storage.rootPath).replaceAll('\\', '/'),
         imageModelVersion: config.activeImageModelVersion,
       );
       _updateReaction(updated);
@@ -552,15 +496,11 @@ class Coordinator {
       _searchIso?.send(VectorIndexAddImage(id, imageVec));
 
       // Clear status
-      _progressController.add(IngestProgressMsg(
-        reactionId: id,
-        status: ReactionStatus.ready,
-        progress: 1.0,
-      ));
+      _progressController.add(IngestProgressMsg(reactionUrl: reaction.url, reactionId: id, status: ReactionStatus.ready, progress: 1.0));
       _completeController.add(IngestCompleteMsg(updated));
     } catch (e) {
       _debugPrint('Re-embed failed for $id: $e');
-      _failedController.add(IngestFailedMsg(reactionId: id, error: e.toString()));
+      _failedController.add(IngestFailedMsg(reactionUrl: reaction.url, reactionId: id, error: e.toString()));
     }
   }
 
@@ -569,25 +509,17 @@ class Coordinator {
     final reaction = _metadata.byId(id);
     if (reaction == null || reaction.localFile == null || _ffmpeg == null) return;
 
-    _progressController.add(IngestProgressMsg(
-      reactionId: id,
-      status: ReactionStatus.thumbnailing,
-      progress: 0.0,
-    ));
+    _progressController.add(
+      IngestProgressMsg(reactionUrl: reaction.url, reactionId: id, status: ReactionStatus.thumbnailing, progress: 0.0),
+    );
 
     final localPath = resolvePath(reaction.localFile!);
     try {
-      await _ffmpeg!.generateStaticThumbnail(
-        inputPath: localPath,
-        outputPath: _storage.thumbnailStaticPath(id),
-      );
+      await _ffmpeg.generateStaticThumbnail(inputPath: localPath, outputPath: _storage.thumbnailStaticPath(id));
 
       if (config.animatedPreviewsEnabled) {
         try {
-          await _ffmpeg!.generateAnimatedThumbnail(
-            inputPath: localPath,
-            outputPath: _storage.thumbnailAnimatedPath(id),
-          );
+          await _ffmpeg.generateAnimatedThumbnail(inputPath: localPath, outputPath: _storage.thumbnailAnimatedPath(id));
         } catch (_) {}
       }
 
@@ -595,16 +527,12 @@ class Coordinator {
       // The tile will rebuild with the new thumbnail because the file
       // on disk has changed (Image.file re-reads on rebuild)
 
-      _progressController.add(IngestProgressMsg(
-        reactionId: id,
-        status: ReactionStatus.ready,
-        progress: 1.0,
-      ));
+      _progressController.add(IngestProgressMsg(reactionUrl: reaction.url, reactionId: id, status: ReactionStatus.ready, progress: 1.0));
       _completeController.add(IngestCompleteMsg(reaction));
       _debugPrint('Thumbnails regenerated for $id');
     } catch (e) {
       _debugPrint('Thumbnail regeneration failed for $id: $e');
-      _failedController.add(IngestFailedMsg(reactionId: id, error: e.toString()));
+      _failedController.add(IngestFailedMsg(reactionUrl: reaction.url, reactionId: id, error: e.toString()));
     }
   }
 
@@ -743,15 +671,17 @@ class Coordinator {
         final reaction = _metadata.byId(r.reactionId);
         final ocrPreview = reaction?.ocrText != null
             ? reaction!.ocrText!.length > 30
-                ? reaction.ocrText!.substring(0, 30)
-                : reaction.ocrText
+                  ? reaction.ocrText!.substring(0, 30)
+                  : reaction.ocrText
             : 'none';
-        _debugPrint('Search: #${i + 1} ${r.reactionId} '
-            'score=${r.score.toStringAsFixed(4)} '
-            'rrf=${r.rrfScore.toStringAsFixed(4)} '
-            'boost=${r.usageBoost.toStringAsFixed(4)} '
-            'usage=${reaction?.usageCount ?? 0} '
-            'ocr="$ocrPreview"');
+        _debugPrint(
+          'Search: #${i + 1} ${r.reactionId} '
+          'score=${r.score.toStringAsFixed(4)} '
+          'rrf=${r.rrfScore.toStringAsFixed(4)} '
+          'boost=${r.usageBoost.toStringAsFixed(4)} '
+          'usage=${reaction?.usageCount ?? 0} '
+          'ocr="$ocrPreview"',
+        );
       }
       if (_pendingSearches.isNotEmpty) {
         _pendingSearches.removeAt(0).complete(msg.results);
@@ -768,62 +698,51 @@ class Coordinator {
     }
   }
 
-  void _onIngestEvent(WorkerMessage msg) {
-    switch (msg) {
-      case IngestProgressMsg(:final reactionId, :final status, :final progress):
-        final reaction = _metadata.byId(reactionId);
-        if (reaction != null) {
-          _updateReaction(reaction.copyWith(
-            status: status,
-            progress: progress,
-          ));
-          _scheduleSave();
-        }
-        _progressController.add(msg);
-        break;
+  // void _onIngestEvent(WorkerMessage msg) {
+  //   switch (msg) {
+  //     case IngestProgressMsg(:final reactionId, :final status, :final progress):
+  //       final reaction = _metadata.byId(reactionId);
+  //       if (reaction != null) {
+  //         _updateReaction(reaction.copyWith(status: status, progress: progress));
+  //         _scheduleSave();
+  //       }
+  //       _progressController.add(msg);
+  //       break;
 
-      case IngestCompleteMsg(:final reaction):
-        _updateReaction(reaction);
-        _scheduleSave();
+  //     case IngestCompleteMsg(:final reaction):
+  //       _updateReaction(reaction);
+  //       _scheduleSave();
 
-        // Tell search isolate about new vectors
-        if (reaction.textEmbeddingPath != null && reaction.textModelVersion != null) {
-          _loadAndSendVector(reaction.id, reaction.textEmbeddingPath!, isImage: false);
-        }
-        if (reaction.imageEmbeddingPath != null) {
-          _loadAndSendVector(reaction.id, reaction.imageEmbeddingPath!, isImage: true);
-        }
+  //       // Tell search isolate about new vectors
+  //       if (reaction.textEmbeddingPath != null && reaction.textModelVersion != null) {
+  //         _loadAndSendVector(reaction.id, reaction.textEmbeddingPath!, isImage: false);
+  //       }
+  //       if (reaction.imageEmbeddingPath != null) {
+  //         _loadAndSendVector(reaction.id, reaction.imageEmbeddingPath!, isImage: true);
+  //       }
 
-        _completeController.add(msg);
-        break;
+  //       _completeController.add(msg);
+  //       break;
 
-      case IngestFailedMsg(:final reactionId, :final error):
-        final reaction = _metadata.byId(reactionId);
-        if (reaction != null) {
-          _updateReaction(reaction.copyWith(
-            status: ReactionStatus.failed,
-            errorMessage: error,
-          ));
-          _scheduleSave();
-        }
-        _failedController.add(msg);
-        break;
+  //     case IngestFailedMsg(:final reactionId, :final error):
+  //       final reaction = _metadata.byId(reactionId);
+  //       if (reaction != null) {
+  //         _updateReaction(reaction.copyWith(status: ReactionStatus.failed, errorMessage: error));
+  //         _scheduleSave();
+  //       }
+  //       _failedController.add(msg);
+  //       break;
 
-      default:
-        // ignore unexpected messages
-        break;
-    }
-  }
+  //     default:
+  //       // ignore unexpected messages
+  //       break;
+  //   }
+  // }
 
   /// Load a vector from disk and send it to the search isolate.
-  Future<void> _loadAndSendVector(
-    String reactionId,
-    String relativePath, {
-    required bool isImage,
-  }) async {
+  Future<void> _loadAndSendVector(String reactionId, String relativePath, {required bool isImage}) async {
     try {
-      final absPath =
-          '${_storage.rootPath}/${relativePath.replaceAll('/', p.separator)}';
+      final absPath = '${_storage.rootPath}/${relativePath.replaceAll('/', p.separator)}';
       final vec = readVectorFile(absPath);
       if (isImage) {
         _searchIso?.send(VectorIndexAddImage(reactionId, vec));
@@ -837,9 +756,7 @@ class Coordinator {
 
   /// Update a reaction in the in-memory metadata (immutable replace).
   void _updateReaction(Reaction updated) {
-    final newReactions = _metadata.reactions
-        .map((r) => r.id == updated.id ? updated : r)
-        .toList();
+    final newReactions = _metadata.reactions.map((r) => r.id == updated.id ? updated : r).toList();
     _metadata = _metadata.copyWith(reactions: newReactions);
   }
 
@@ -889,13 +806,13 @@ class CoordinatorConfig {
 
   /// Convert to IngestConfig for the ingest pipeline.
   IngestConfig get ingestConfig => IngestConfig(
-        animatedPreviewsEnabled: animatedPreviewsEnabled,
-        ocrEnabled: ocrEnabled,
-        textModelVersion: activeTextModelVersion,
-        imageModelVersion: activeImageModelVersion,
-        ocrModelVersion: activeOcrModelVersion,
-        ocrIsolateCallback: ocrIsolateCallback,
-      );
+    animatedPreviewsEnabled: animatedPreviewsEnabled,
+    ocrEnabled: ocrEnabled,
+    textModelVersion: activeTextModelVersion,
+    imageModelVersion: activeImageModelVersion,
+    ocrModelVersion: activeOcrModelVersion,
+    ocrIsolateCallback: ocrIsolateCallback,
+  );
 }
 
 // ─── Inference Factory ──────────────────────────────────────────────────────
@@ -942,16 +859,14 @@ class SearchIsolate {
 
   /// Stream of responses from the search isolate.
   /// Uses broadcast stream so multiple listeners can subscribe.
-  Stream<WorkerMessage> get responses =>
-      _responseStream ?? const Stream.empty();
+  Stream<WorkerMessage> get responses => _responseStream ?? const Stream.empty();
 
   Future<void> spawn() async {
     _receivePort = ReceivePort();
     // Convert to broadcast stream so both the handshake + the public
     // responses stream can listen without "already listened to" errors.
     final broadcast = _receivePort!.asBroadcastStream();
-    _responseStream =
-        broadcast.where((msg) => msg is WorkerMessage).cast<WorkerMessage>();
+    _responseStream = broadcast.where((msg) => msg is WorkerMessage).cast<WorkerMessage>();
 
     _isolate = await Isolate.spawn(_searchIsolateEntry, _receivePort!.sendPort);
 
@@ -986,10 +901,7 @@ void _searchIsolateEntry(SendPort mainPort) {
   // reactionsById is rebuilt whenever we get a VectorIndexRebuild or hotlist request
   var reactionsById = <String, Reaction>{};
 
-  final service = SearchService(
-    vectorIndex: vectorIndex,
-    keywordIndex: keywordIndex,
-  );
+  final service = SearchService(vectorIndex: vectorIndex, keywordIndex: keywordIndex);
 
   receivePort.listen((msg) {
     if (msg is! WorkerMessage) return;
@@ -1011,14 +923,7 @@ void _searchIsolateEntry(SendPort mainPort) {
         if (textQueryVec == null) {
           // Text embedding failed — keyword-only search
           final keywordHits = keywordIndex.search(query, topK: topK);
-          final results = keywordHits
-              .map((h) => SearchResult(
-                    reactionId: h.$1,
-                    score: h.$2,
-                    rrfScore: h.$2,
-                    usageBoost: 0,
-                  ))
-              .toList();
+          final results = keywordHits.map((h) => SearchResult(reactionId: h.$1, score: h.$2, rrfScore: h.$2, usageBoost: 0)).toList();
           mainPort.send(SearchResponse(results));
         } else {
           final results = service.search(
@@ -1032,10 +937,7 @@ void _searchIsolateEntry(SendPort mainPort) {
         }
 
       case HotlistRequest(:final limit):
-        final results = service.hotlist(
-          reactionsById: reactionsById,
-          limit: limit,
-        );
+        final results = service.hotlist(reactionsById: reactionsById, limit: limit);
         mainPort.send(SearchResponse(results));
 
       case VectorIndexAddText(:final reactionId, :final vector):
@@ -1069,8 +971,7 @@ class IngestIsolate {
 
   /// Stream of events from the ingest isolate.
   /// Uses broadcast stream so multiple listeners can subscribe.
-  Stream<WorkerMessage> get events =>
-      _eventStream ?? const Stream.empty();
+  Stream<WorkerMessage> get events => _eventStream ?? const Stream.empty();
 
   Future<void> spawn({
     required String storageRootPath,
@@ -1084,8 +985,7 @@ class IngestIsolate {
     // Convert to broadcast stream so both the handshake + the public
     // events stream can listen without "already listened to" errors.
     final broadcast = _receivePort!.asBroadcastStream();
-    _eventStream =
-        broadcast.where((msg) => msg is WorkerMessage).cast<WorkerMessage>();
+    _eventStream = broadcast.where((msg) => msg is WorkerMessage).cast<WorkerMessage>();
 
     final init = _IngestIsolateInit(
       mainPort: _receivePort!.sendPort,
@@ -1167,18 +1067,13 @@ void _ingestIsolateEntry(_IngestIsolateInit init) {
           await for (final event in pipeline.process(reaction)) {
             switch (event) {
               case IngestProgressEvent(:final reactionId, :final status, :final progress):
-                init.mainPort.send(IngestProgressMsg(
-                  reactionId: reactionId,
-                  status: status,
-                  progress: progress,
-                ));
+                init.mainPort.send(
+                  IngestProgressMsg(reactionUrl: reaction.url, reactionId: reactionId, status: status, progress: progress),
+                );
               case IngestCompleteEvent(:final reaction):
                 init.mainPort.send(IngestCompleteMsg(reaction));
               case IngestFailedEvent(:final reactionId, :final error):
-                init.mainPort.send(IngestFailedMsg(
-                  reactionId: reactionId,
-                  error: error,
-                ));
+                init.mainPort.send(IngestFailedMsg(reactionUrl: reaction.url, reactionId: reactionId, error: error));
             }
           }
         }();
