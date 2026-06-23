@@ -2,6 +2,7 @@
 
 import 'dart:io';
 
+import 'package:exui/exui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
@@ -61,35 +62,30 @@ class GifGrid extends StatelessWidget {
           // Sort for library, keep search order as-is
           final sortedItems = isSearching ? items : (List<Reaction>.from(allItems)..sort((a, b) => b.id.compareTo(a.id)));
 
-          contentSliver = SliverWaterfallFlow(
-            gridDelegate: const SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 300,
-              crossAxisSpacing: 4,
-              mainAxisSpacing: 4,
+          contentSliver = SliverPadding(
+            padding: .all(4),
+            sliver: SliverWaterfallFlow(
+              gridDelegate: const SliverWaterfallFlowDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 300,
+                crossAxisSpacing: 4,
+                mainAxisSpacing: 4,
+              ),
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final item = sortedItems[index];
+                final reaction = coordinator?.getReaction(isSearching ? (item as SearchResult).reactionId : (item as Reaction).id);
+                if (reaction == null) return const SizedBox.shrink();
+                return _GifTile(reaction: reaction);
+              }, childCount: sortedItems.length),
             ),
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final item = sortedItems[index];
-              final reaction = coordinator?.getReaction(isSearching ? (item as SearchResult).reactionId : (item as Reaction).id);
-              if (reaction == null) return const SizedBox.shrink();
-              return _GifTile(reaction: reaction);
-            }, childCount: sortedItems.length),
           );
         }
 
         // One layout to rule them all
-        return Padding(
-          padding: const EdgeInsets.all(4),
-          child: CustomScrollView(
-            slivers: [
-              const AdaptiveHeightSliverPersistentHeader(
-                floating: true,
-                pinned: true,
-                needRepaint: false,
-                child: Column(children: [MySearchBar(), SizedBox(height: 4)]),
-              ),
-              contentSliver,
-            ],
-          ),
+        return CustomScrollView(
+          slivers: [
+            AdaptiveHeightSliverPersistentHeader(floating: true, pinned: true, needRepaint: false, child: MySearchBar().center()),
+            contentSliver,
+          ],
         );
       },
     );
