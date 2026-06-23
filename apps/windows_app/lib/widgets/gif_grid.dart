@@ -175,13 +175,15 @@ class _GifTile extends StatelessWidget {
                       localFilePath: localFileAbs,
                       animatedPreviewsEnabled: false, // TODO: from settings
                       onDimensions: (w, h) {
-                        // Capture dimensions for masonry layout
+                        // Capture dimensions for masonry layout + persist to metadata
                         final current = reactionDimensions.value[reaction.id];
                         if (current == null) {
                           final newDims = Map<String, (int, int)>.from(
                               reactionDimensions.value);
                           newDims[reaction.id] = (w, h);
                           reactionDimensions.value = newDims;
+                          // Also save to metadata so dimensions persist across launches
+                          coordinator?.updateDimensions(reaction.id, w, h);
                         }
                       },
                     ),

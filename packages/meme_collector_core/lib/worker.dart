@@ -415,12 +415,14 @@ class Coordinator {
 
     if (reaction == null) return null; // duplicate
 
-    // Add to metadata + save
+    // Add to metadata immediately — the UI can show it right away
     _metadata = _metadata.copyWith(reactions: [..._metadata.reactions, reaction]);
     _scheduleSave();
 
-    // Compute initial text embedding from title + tags (before download)
-    // so the reaction is immediately searchable
+    // Start the ingest pipeline immediately (runs async in background)
+    _runIngest(reaction);
+
+    // Compute initial text embedding async (doesn't block the return)
     if (reaction.embeddableText.isNotEmpty) {
       try {
         final textVec = await _queryEmbedder.embed(reaction.embeddableText);
@@ -443,9 +445,6 @@ class Coordinator {
         // Embedding failed — reaction still queued for ingest
       }
     }
-
-    // Queue for ingest (download + thumbnails + image embedding + OCR)
-    _runIngest(reaction);
 
     return reaction;
   }
@@ -509,6 +508,16 @@ class Coordinator {
         // re-embed failed — keep old embedding
       }
     }
+  }
+
+  /// Update dimensions for a reaction (from image provider decode).
+  /// Saves to metadata so dimensions persist across launches.
+  Future<void> updateDimensions(String id, int width, int height) async {
+    final reaction = _metadata.byId(id);
+    if (reaction == null) return;
+    if (reaction.width == width && reaction.height == height) return;
+    _updateReaction(reaction.copyWith(width: width, height: height));
+    _scheduleSave();
   }
 
   /// Pin a reaction locally (force download if not already downloaded).

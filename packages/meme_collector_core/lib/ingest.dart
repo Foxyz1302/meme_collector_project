@@ -555,6 +555,9 @@ class FfmpegWrapper {
         mimeType = 'video/webm';
         isAnimated = true;
       }
+    } else {
+      print('[ffprobe] $inputPath: no streams found. '
+          'streams=${streams?.length}, json keys=${json.keys.toList()}');
     }
 
     final fileSize = (format?['size'] as String?) != null
