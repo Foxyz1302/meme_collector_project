@@ -854,65 +854,89 @@ class IngestPipeline {
     var reaction = initial;
     print('[Ingest] Starting pipeline for ${reaction.id} (${reaction.url})');
 
+    // Local vars for download result (used across stages)
+    String downloadLocalPath = '';
+    MediaInfo downloadMediaInfo = const MediaInfo(fileSizeBytes: 0);
+
     try {
-      // ─── Stage 1: Download ──────────────────────────────────────────────
-      print('[Ingest] ${reaction.id}: downloading...');
-      reaction = reaction.copyWith(status: ReactionStatus.downloading, progress: 0.0);
-      yield IngestProgressEvent(
-          reactionId: reaction.id,
-          status: reaction.status,
-          progress: reaction.progress);
+      // ─── Stage 1: Download (skip if already downloaded) ─────────────
+      if (reaction.localFile == null) {
+        print('[Ingest] ${reaction.id}: downloading...');
+        reaction = reaction.copyWith(status: ReactionStatus.downloading, progress: 0.0);
+        yield IngestProgressEvent(
+            reactionId: reaction.id,
+            status: reaction.status,
+            progress: reaction.progress);
 
-      final downloadResult = await _download(reaction);
-      reaction = downloadResult.reaction;
-      print('[Ingest] ${reaction.id}: downloaded ${reaction.fileSizeBytes} bytes, '
-          '${reaction.width}x${reaction.height}, mime=${reaction.mimeType}, '
-          'animated=${downloadResult.mediaInfo.isAnimated}');
-      yield IngestProgressEvent(
-          reactionId: reaction.id,
-          status: reaction.status,
-          progress: 0.4,
-          reaction: reaction);
-
-      // ─── Stage 2: Thumbnail ─────────────────────────────────────────────
-      print('[Ingest] ${reaction.id}: generating thumbnail...');
-      reaction = reaction.copyWith(status: ReactionStatus.thumbnailing, progress: 0.5);
-      yield IngestProgressEvent(
-          reactionId: reaction.id,
-          status: reaction.status,
-          progress: reaction.progress,
-          reaction: reaction);
-
-      await _generateThumbnails(reaction, downloadResult.localPath);
-
-      final staticThumbPath = storage.thumbnailStaticPath(reaction.id);
-      reaction = reaction.copyWith(
-        thumbnailStatic: p.relative(staticThumbPath, from: storage.rootPath),
-      );
-      // Check if the source is inherently animated (regardless of ffprobe detection,
-      // which fails on animated WebP and sometimes GIFs)
-      final isLikelyAnimated = downloadResult.mediaInfo.isAnimated ||
-          reaction.mimeType == 'image/gif' ||
-          reaction.mimeType == 'image/webp' ||
-          reaction.mimeType == 'video/mp4' ||
-          reaction.mimeType == 'video/webm' ||
-          reaction.url.toLowerCase().endsWith('.gif') ||
-          reaction.url.toLowerCase().endsWith('.webp') ||
-          reaction.url.toLowerCase().endsWith('.mp4') ||
-          reaction.url.toLowerCase().endsWith('.webm');
-
-      if (config.animatedPreviewsEnabled && isLikelyAnimated) {
-        final animThumbPath = storage.thumbnailAnimatedPath(reaction.id);
-        reaction = reaction.copyWith(
-          thumbnailAnimated: p.relative(animThumbPath, from: storage.rootPath),
-        );
+        final downloadResult = await _download(reaction);
+        reaction = downloadResult.reaction;
+        downloadLocalPath = downloadResult.localPath;
+        downloadMediaInfo = downloadResult.mediaInfo;
+        print('[Ingest] ${reaction.id}: downloaded ${reaction.fileSizeBytes} bytes, '
+            '${reaction.width}x${reaction.height}, mime=${reaction.mimeType}, '
+            'animated=${downloadMediaInfo.isAnimated}');
+        yield IngestProgressEvent(
+            reactionId: reaction.id,
+            status: reaction.status,
+            progress: 0.4,
+            reaction: reaction);
+      } else {
+        print('[Ingest] ${reaction.id}: already downloaded, skipping download');
+        downloadLocalPath = p.join(storage.rootPath, reaction.localFile!);
+        if (ffmpeg != null) {
+          try {
+            downloadMediaInfo = await ffmpeg!.probe(downloadLocalPath);
+          } catch (_) {
+            downloadMediaInfo = MediaInfo(fileSizeBytes: await File(downloadLocalPath).length());
+          }
+        } else {
+          downloadMediaInfo = MediaInfo(fileSizeBytes: await File(downloadLocalPath).length());
+        }
       }
-      print('[Ingest] ${reaction.id}: thumbnail ready at ${reaction.thumbnailStatic}');
-      yield IngestProgressEvent(
-          reactionId: reaction.id,
-          status: reaction.status,
-          progress: 0.6,
-          reaction: reaction);
+
+      // ─── Stage 2: Thumbnail (skip if already exists) ───────────────
+      if (reaction.thumbnailStatic == null) {
+        print('[Ingest] ${reaction.id}: generating thumbnail...');
+        reaction = reaction.copyWith(status: ReactionStatus.thumbnailing, progress: 0.5);
+        yield IngestProgressEvent(
+            reactionId: reaction.id,
+            status: reaction.status,
+            progress: reaction.progress,
+            reaction: reaction);
+
+        await _generateThumbnails(reaction, downloadLocalPath);
+
+        final staticThumbPath = storage.thumbnailStaticPath(reaction.id);
+        reaction = reaction.copyWith(
+          thumbnailStatic: p.relative(staticThumbPath, from: storage.rootPath),
+        );
+
+        // Check if the source is inherently animated
+        final isLikelyAnimated = downloadMediaInfo.isAnimated ||
+            reaction.mimeType == 'image/gif' ||
+            reaction.mimeType == 'image/webp' ||
+            reaction.mimeType == 'video/mp4' ||
+            reaction.mimeType == 'video/webm' ||
+            reaction.url.toLowerCase().endsWith('.gif') ||
+            reaction.url.toLowerCase().endsWith('.webp') ||
+            reaction.url.toLowerCase().endsWith('.mp4') ||
+            reaction.url.toLowerCase().endsWith('.webm');
+
+        if (config.animatedPreviewsEnabled && isLikelyAnimated) {
+          final animThumbPath = storage.thumbnailAnimatedPath(reaction.id);
+          reaction = reaction.copyWith(
+            thumbnailAnimated: p.relative(animThumbPath, from: storage.rootPath),
+          );
+        }
+        print('[Ingest] ${reaction.id}: thumbnail ready at ${reaction.thumbnailStatic}');
+        yield IngestProgressEvent(
+            reactionId: reaction.id,
+            status: reaction.status,
+            progress: 0.6,
+            reaction: reaction);
+      } else {
+        print('[Ingest] ${reaction.id}: thumbnail already exists, skipping');
+      }
 
       // ─── Stage 3: Text embedding ───────────────────────────────────────
       print('[Ingest] ${reaction.id}: text embedding...');

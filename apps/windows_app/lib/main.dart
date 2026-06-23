@@ -62,7 +62,7 @@ Future<void> _initCoordinator() async {
     coordinator = Coordinator(config: CoordinatorConfig(
       storagePath: storagePath,
       animatedPreviewsEnabled: true,
-      ocrEnabled: false, // Set to true once OCR recognition is fixed
+      ocrEnabled: true,
       ocrIsolateCallback: (imagePath) async {
         // Run OCR in a background isolate — creates its own ONNX sessions
         return await Isolate.run(() async {

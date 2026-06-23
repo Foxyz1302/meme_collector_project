@@ -76,7 +76,11 @@ class PpocrEngine implements OcrEngine {
     // Load character dictionary
     final dictContent = await File(_dictPath).readAsString();
     _dict = dictContent.split('\n').where((l) => l.isNotEmpty).toList();
-    _blankIndex = _dict!.length; // CTC blank is the last index
+    // PP-OCR uses CTC blank at index 0, not the last index.
+    // The dict file contains the actual characters (no blank entry).
+    // The model outputs num_classes = dict.length + 1 (extra for blank at 0).
+    // So index 0 = blank, indices 1..N = dict[0]..dict[N-1].
+    _blankIndex = 0;
 
     _initialized = true;
     print('[OCR] Initialized: det=${_detSession!.inputNames}, '
@@ -254,8 +258,8 @@ class PpocrEngine implements OcrEngine {
         width: _recWidth, height: _recHeight,
         interpolation: img.Interpolation.linear);
 
-    // Convert to NCHW float32, normalize
-    final input = _imageToNchw(resized, _recWidth, _recHeight, normalize: true);
+    // Convert to NCHW float32, normalize to [-1, 1] for PP-OCR recognition
+    final input = _imageToNchw(resized, _recWidth, _recHeight, toNegOne: true);
 
     // Run inference
     final inputTensor = OrtValueTensor.createTensorWithDataList(
@@ -280,6 +284,7 @@ class PpocrEngine implements OcrEngine {
   }
 
   /// CTC decode: take argmax per timestep, collapse repeats, remove blanks.
+  /// PP-OCR uses blank at index 0. Characters start at index 1.
   String _ctcDecode(List<dynamic> output, int timesteps, int numClasses) {
     final chars = <int>[];
     var prevChar = -1;
@@ -298,9 +303,10 @@ class PpocrEngine implements OcrEngine {
         }
       }
 
-      // Skip blank (last index) and repeats
+      // Skip blank (index 0) and repeats
       if (maxIdx != _blankIndex && maxIdx != prevChar) {
-        chars.add(maxIdx);
+        // Map model output index to dict index: output 1 → dict[0], output 2 → dict[1], etc.
+        chars.add(maxIdx - 1);
       }
       prevChar = maxIdx;
     }
@@ -308,7 +314,7 @@ class PpocrEngine implements OcrEngine {
     // Convert indices to characters
     final result = StringBuffer();
     for (final idx in chars) {
-      if (idx < _dict!.length) {
+      if (idx >= 0 && idx < _dict!.length) {
         result.write(_dict![idx]);
       }
     }
@@ -327,15 +333,30 @@ class PpocrEngine implements OcrEngine {
   }
 
   /// Convert image to NCHW Float32List for ONNX input.
+  /// For detection: normalize to [0, 1] (divide by 255)
+  /// For recognition: normalize to [-1, 1] ((x/255 - 0.5) / 0.5)
   Float32List _imageToNchw(img.Image image, int width, int height,
-      {bool normalize = false}) {
+      {bool normalize = false, bool toNegOne = false}) {
     final pixelValues = Float32List(3 * height * width);
     for (var y = 0; y < height; y++) {
       for (var x = 0; x < width; x++) {
         final pixel = image.getPixel(x, y);
-        final r = normalize ? pixel.rNormalized : pixel.r / 255.0;
-        final g = normalize ? pixel.gNormalized : pixel.g / 255.0;
-        final b = normalize ? pixel.bNormalized : pixel.b / 255.0;
+        double r, g, b;
+        if (toNegOne) {
+          // PP-OCR recognition: normalize to [-1, 1]
+          r = (pixel.rNormalized - 0.5) / 0.5;
+          g = (pixel.gNormalized - 0.5) / 0.5;
+          b = (pixel.bNormalized - 0.5) / 0.5;
+        } else if (normalize) {
+          // Detection: normalize to [0, 1]
+          r = pixel.rNormalized;
+          g = pixel.gNormalized;
+          b = pixel.bNormalized;
+        } else {
+          r = pixel.r / 255.0;
+          g = pixel.g / 255.0;
+          b = pixel.b / 255.0;
+        }
         final idx = y * width + x;
         pixelValues[0 * height * width + idx] = r.toDouble();
         pixelValues[1 * height * width + idx] = g.toDouble();
