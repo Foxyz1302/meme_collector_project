@@ -167,13 +167,17 @@ class VectorIndex {
   ///
   /// Returns (reactionId, score) pairs sorted by score descending.
   /// Score is cosine similarity (since vectors are pre-normalized, = dot product).
-  List<(String, double)> searchText(Float32List query, {int topK = 50}) {
+  /// Results below [minScore] are filtered out (default 0.15 — below that is
+  /// essentially random for CLIP 512-dim embeddings).
+  List<(String, double)> searchText(Float32List query, {int topK = 50, double minScore = 0.15}) {
     final results = <(String, double)>[];
     for (var i = 0; i < _ids.length; i++) {
       final vec = _textVectors[i];
       if (vec == null) continue;
       final score = _dotProductSimd(query, vec);
-      results.add((_ids[i], score));
+      if (score >= minScore) {
+        results.add((_ids[i], score));
+      }
     }
     results.sort((a, b) => b.$2.compareTo(a.$2));
     return results.take(topK).toList();
@@ -182,13 +186,16 @@ class VectorIndex {
   /// Search image vectors for the nearest neighbors to [query].
   ///
   /// [query] is typically a CLIP text embedding (cross-modal search).
-  List<(String, double)> searchImage(Float32List query, {int topK = 50}) {
+  /// Results below [minScore] are filtered out.
+  List<(String, double)> searchImage(Float32List query, {int topK = 50, double minScore = 0.15}) {
     final results = <(String, double)>[];
     for (var i = 0; i < _ids.length; i++) {
       final vec = _imageVectors[i];
       if (vec == null) continue;
       final score = _dotProductSimd(query, vec);
-      results.add((_ids[i], score));
+      if (score >= minScore) {
+        results.add((_ids[i], score));
+      }
     }
     results.sort((a, b) => b.$2.compareTo(a.$2));
     return results.take(topK).toList();
@@ -422,10 +429,15 @@ class SearchService {
       ));
     }
 
-    // Sort by final score descending
-    results.sort((a, b) => b.score.compareTo(a.score));
+    // Sort by RRF score only (no usage boost — search should be predictable)
+    results.sort((a, b) => b.rrfScore.compareTo(a.rrfScore));
 
-    return results.take(topK).toList();
+    return results.take(topK).map((r) => SearchResult(
+      reactionId: r.reactionId,
+      score: r.rrfScore,
+      rrfScore: r.rrfScore,
+      usageBoost: 0,
+    )).toList();
   }
 
   /// Get the hotlist — most recently used reactions.
