@@ -117,7 +117,7 @@ class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
       String path, ImageDecoderCallback decode) async {
     final buffer = await ui.ImmutableBuffer.fromFilePath(path);
     final codec = await decode(buffer);
-    _reportDimensions(codec);
+    await _reportDimensionsFromCodec(codec);
     return codec;
   }
 
@@ -146,10 +146,9 @@ class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
 
     final buffer = await ui.ImmutableBuffer.fromFilePath(tempFile.path);
     final codec = await decode(buffer);
-    _reportDimensions(codec);
+    await _reportDimensionsFromCodec(codec);
 
-    // Clean up temp file (the real download lives in downloads/{id}.{ext}
-    // once the ingest pipeline runs)
+    // Clean up temp file
     try {
       await tempFile.delete();
       await tempDir.delete();
@@ -158,10 +157,23 @@ class ReactionImageProvider extends ImageProvider<ReactionImageProvider> {
     return codec;
   }
 
-  void _reportDimensions(ui.Codec codec) {
-    if (onDimensions != null) {
-      // codec.width/height are available immediately after decode
-      onDimensions!(codec.width, codec.height);
+  /// Extract dimensions from a Codec by decoding the first frame.
+  ///
+  /// ui.Codec doesn't have width/height directly — only frameCount and
+  /// repetitionCount. We need to call getNextFrame() to get a FrameInfo,
+  /// which has an .image property (ui.Image) with width/height.
+  /// The frame is released back to the codec (MultiFrameImageStreamCompleter
+  /// will decode frames again as needed for animation).
+  Future<void> _reportDimensionsFromCodec(ui.Codec codec) async {
+    if (onDimensions == null) return;
+    try {
+      final frame = await codec.getNextFrame();
+      onDimensions!(frame.image.width, frame.image.height);
+      // Don't dispose the image — MultiFrameImageStreamCompleter needs it
+      // for animation. The codec manages its own frame lifecycle.
+    } catch (_) {
+      // If we can't get the frame, dimensions just won't be captured.
+      // Not fatal — layout falls back to 1:1 aspect ratio.
     }
   }
 

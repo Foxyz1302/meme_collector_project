@@ -30,6 +30,159 @@ import 'storage.dart';
 
 // ─── URL Normalizer ─────────────────────────────────────────────────────────
 
+/// Result of URL validation — checks if a URL is supported.
+class ValidationResult {
+  /// True if the URL can be added as a reaction.
+  final bool isValid;
+
+  /// Human-readable reason if invalid.
+  final String? reason;
+
+  /// The detected platform (if recognized).
+  final SourcePlatform? platform;
+
+  /// The detected media type (if determinable from URL).
+  final MediaType? mediaType;
+
+  const ValidationResult({
+    required this.isValid,
+    this.reason,
+    this.platform,
+    this.mediaType,
+  });
+
+  const ValidationResult.valid({
+    required this.platform,
+    this.mediaType,
+  })  : isValid = true,
+        reason = null;
+
+  const ValidationResult.invalid(this.reason)
+      : isValid = false,
+        platform = null,
+        mediaType = null;
+}
+
+/// Detected media type from URL or content-type.
+enum MediaType {
+  image,
+  animatedImage,
+  video,
+  unknown;
+
+  static MediaType? fromExtension(String ext) {
+    final e = ext.toLowerCase();
+    if ({'.gif'}.contains(e)) return MediaType.animatedImage;
+    if ({'.png', '.jpg', '.jpeg', '.webp', '.bmp'}.contains(e)) {
+      return MediaType.image;
+    }
+    if ({'.mp4', '.webm', '.mov', '.mkv', '.avi'}.contains(e)) {
+      return MediaType.video;
+    }
+    return null;
+  }
+
+  static MediaType? fromMimeType(String? mime) {
+    if (mime == null) return null;
+    final m = mime.toLowerCase();
+    if (m == 'image/gif') return MediaType.animatedImage;
+    if (m.startsWith('image/')) return MediaType.image;
+    if (m.startsWith('video/')) return MediaType.video;
+    return MediaType.unknown;
+  }
+}
+
+/// Validates whether a URL can be added as a reaction.
+///
+/// Quick checks (no network):
+///   - Is it a valid URL?
+///   - Is it a recognized platform (Tenor/Giphy/Discord/direct)?
+///   - If direct URL, does it have a known media extension?
+///
+/// For Tenor/Giphy page URLs, we can't know the media type without fetching
+/// the page — returns valid with mediaType=null.
+class UrlValidator {
+  /// Validate a URL without network access.
+  static ValidationResult validate(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) {
+      return const ValidationResult.invalid('URL is empty');
+    }
+
+    // Parse URL
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || !uri.hasScheme) {
+      return const ValidationResult.invalid('Invalid URL');
+    }
+
+    if (!{'http', 'https'}.contains(uri.scheme)) {
+      return ValidationResult.invalid('Unsupported scheme: ${uri.scheme}');
+    }
+
+    final host = uri.host.toLowerCase();
+
+    // Tenor — page URL or direct media URL
+    if (host.contains('tenor.com')) {
+      return ValidationResult.valid(
+        platform: SourcePlatform.tenor,
+        mediaType: null, // can't know without fetching the page
+      );
+    }
+
+    // Giphy — page URL or direct media URL
+    if (host.contains('giphy.com')) {
+      return ValidationResult.valid(
+        platform: SourcePlatform.giphy,
+        mediaType: null,
+      );
+    }
+
+    // Discord — CDN URLs
+    if (host.contains('discordapp.com') || host.contains('discordapp.net')) {
+      if (uri.path.contains('/attachments/')) {
+        // Try to detect media type from extension
+        final ext = _extensionFromPath(uri.path);
+        return ValidationResult.valid(
+          platform: SourcePlatform.discord,
+          mediaType: MediaType.fromExtension(ext),
+        );
+      }
+    }
+
+    // Direct media URL — check extension
+    final ext = _extensionFromPath(uri.path);
+    if (ext.isNotEmpty) {
+      final mediaType = MediaType.fromExtension(ext);
+      if (mediaType != null) {
+        return ValidationResult.valid(
+          platform: SourcePlatform.direct,
+          mediaType: mediaType,
+        );
+      }
+    }
+
+    // Unknown — could be a page URL we don't recognize, or a direct link
+    // without a media extension. Allow it but flag as unknown.
+    return const ValidationResult.valid(
+      platform: SourcePlatform.unknown,
+      mediaType: null,
+    );
+  }
+
+  /// Extract file extension from a URL path (e.g. '/foo/bar.gif' → '.gif').
+  static String _extensionFromPath(String path) {
+    final cleanPath = path.split('?').first.split('#').first;
+    final dotIndex = cleanPath.lastIndexOf('.');
+    if (dotIndex == -1 || dotIndex == cleanPath.length - 1) return '';
+    final ext = cleanPath.substring(dotIndex).toLowerCase();
+    // Sanity check — extensions are short
+    if (ext.length > 6) return '';
+    return ext;
+  }
+}
+
+// ─── URL Normalizer ─────────────────────────────────────────────────────────
+
 /// Result of URL normalization — classifies the URL and extracts the
 /// direct media URL (which may differ from the page URL for Tenor/Giphy).
 class NormalizedUrl {
