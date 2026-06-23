@@ -129,16 +129,6 @@ class _GifTile extends StatelessWidget {
             ? c.resolvePath(reaction.localFile!)
             : null;
 
-    // Aspect ratio from stored dimensions, or default 1:1
-    final dims = reactionDimensions.value[reaction.id];
-    final storedDims = (reaction.width != null && reaction.height != null)
-        ? (reaction.width!, reaction.height!)
-        : null;
-    final effectiveDims = dims ?? storedDims;
-    final aspectRatio = effectiveDims != null
-        ? effectiveDims.$1 / effectiveDims.$2
-        : 1.0;
-
     return FTappable(
       onPress: () async {
         await Clipboard.setData(ClipboardData(text: reaction.url));
@@ -154,60 +144,79 @@ class _GifTile extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
-            // Image layer
-            AspectRatio(
-              aspectRatio: aspectRatio,
-              child: Image(
-                image: ReactionImageProvider(
-                  reactionId: reaction.id,
-                  url: reaction.url,
-                  thumbnailStaticPath: thumbnailStaticAbs,
-                  thumbnailAnimatedPath: thumbnailAnimatedAbs,
-                  localFilePath: localFileAbs,
-                  animatedPreviewsEnabled: false, // TODO: from settings
-                  onDimensions: (w, h) {
-                    // Capture dimensions for masonry layout
-                    final current = reactionDimensions.value[reaction.id];
-                    if (current == null) {
-                      final newDims =
-                          Map<String, (int, int)>.from(reactionDimensions.value);
-                      newDims[reaction.id] = (w, h);
-                      reactionDimensions.value = newDims;
-                    }
-                  },
-                ),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stack) => Container(
-                  color: colors.muted,
-                  child: Icon(FLucideIcons.imageOff, size: 28, color: colors.mutedForeground),
-                ),
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Container(
-                    color: colors.muted,
-                    child: Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          value: loadingProgress.expectedTotalBytes != null
-                              ? loadingProgress.cumulativeBytesLoaded /
-                                  loadingProgress.expectedTotalBytes!
-                              : null,
-                        ),
-                      ),
+            // Image layer — watches reactionDimensions for aspect ratio updates
+            SignalBuilder(
+              builder: (context) {
+                // Read both captured + stored dimensions
+                final capturedDims = reactionDimensions.value[reaction.id];
+                final storedDims =
+                    (reaction.width != null && reaction.height != null)
+                        ? (reaction.width!, reaction.height!)
+                        : null;
+                final effectiveDims = capturedDims ?? storedDims;
+                final aspectRatio = effectiveDims != null
+                    ? effectiveDims.$1 / effectiveDims.$2
+                    : 1.0;
+
+                return AspectRatio(
+                  aspectRatio: aspectRatio,
+                  child: Image(
+                    image: ReactionImageProvider(
+                      reactionId: reaction.id,
+                      url: reaction.url,
+                      thumbnailStaticPath: thumbnailStaticAbs,
+                      thumbnailAnimatedPath: thumbnailAnimatedAbs,
+                      localFilePath: localFileAbs,
+                      animatedPreviewsEnabled: false, // TODO: from settings
+                      onDimensions: (w, h) {
+                        // Capture dimensions for masonry layout
+                        final current = reactionDimensions.value[reaction.id];
+                        if (current == null) {
+                          final newDims = Map<String, (int, int)>.from(
+                              reactionDimensions.value);
+                          newDims[reaction.id] = (w, h);
+                          reactionDimensions.value = newDims;
+                        }
+                      },
                     ),
-                  );
-                },
-              ),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stack) => Container(
+                      color: colors.muted,
+                      child: Icon(FLucideIcons.imageOff,
+                          size: 28, color: colors.mutedForeground),
+                    ),
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        color: colors.muted,
+                        child: Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              value: loadingProgress.expectedTotalBytes !=
+                                      null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
 
             // Status text overlay (shows what ingest is doing)
             SignalBuilder(
               builder: (context) {
                 final status = ingestStatus.value[reaction.id];
-                if (status == null || status.isEmpty) return const SizedBox.shrink();
+                if (status == null || status.isEmpty) {
+                  return const SizedBox.shrink();
+                }
                 return Positioned(
                   left: 0,
                   right: 0,
